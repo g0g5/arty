@@ -101,3 +101,74 @@ export interface ICommandParserService {
   parseCommand(input: string): Command | null;
   executeCommand(command: Command, context: ChatContext): void;
 }
+
+/**
+ * Document Service Interface
+ * Manages document operations and state
+ */
+export interface IDocumentService {
+  // Document state management
+  getCurrentDocument(): DocumentState | null;
+  setCurrentDocument(handle: FileSystemFileHandle, path: string): Promise<void>;
+  
+  // Content operations
+  getContent(): string;
+  appendContent(content: string): Promise<void>;
+  replaceContent(target: string, replacement: string): Promise<void>;
+  searchContent(pattern: string): MatchResult[];
+  
+  // File operations
+  saveDocument(): Promise<void>;
+  revertToSnapshot(snapshotId: string): Promise<void>;
+  
+  // Event system
+  subscribe(listener: DocumentEventListener): () => void;
+  
+  // Auto-save management
+  enableAutoSave(intervalMs: number): void;
+  disableAutoSave(): void;
+}
+
+/**
+ * Document State Interface
+ */
+export interface DocumentState {
+  handle: FileSystemFileHandle;
+  path: string;
+  content: string;
+  isDirty: boolean;
+  lastSaved: number;
+  snapshots: DocumentSnapshot[];
+}
+
+/**
+ * Document Snapshot Interface
+ */
+export interface DocumentSnapshot {
+  id: string;
+  timestamp: number;
+  content: string;
+  triggerEvent: 'manual_save' | 'tool_execution' | 'auto_save';
+  messageId?: string;
+}
+
+/**
+ * Match Result Interface
+ */
+export interface MatchResult {
+  line: number;
+  column: number;
+  match: string;
+  context: string;
+}
+
+/**
+ * Document Event Types
+ */
+export type DocumentEvent = 
+  | { type: 'content_changed'; content: string }
+  | { type: 'document_saved'; timestamp: number }
+  | { type: 'document_loaded'; path: string }
+  | { type: 'error'; error: string };
+
+export type DocumentEventListener = (event: DocumentEvent) => void;
