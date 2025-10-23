@@ -1,10 +1,93 @@
 /**
- * Hardcoded Tool Definitions
- * These tools define the capabilities available to the LLM agent
+ * Simplified Tool Definitions
+ * These 6 simplified tools provide clear, single-purpose capabilities for LLM agents
+ * Each tool has minimal parameters and unambiguous functionality
  */
 
 import type { ToolDefinition } from '../types/models';
 
+export const SIMPLIFIED_TOOL_DEFINITIONS: ToolDefinition[] = [
+  {
+    name: 'read',
+    description: 'Read the complete content of the currently active document in the editor',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'write',
+    description: 'Append new content to the end of the currently active document',
+    parameters: {
+      type: 'object',
+      properties: {
+        content: {
+          type: 'string',
+          description: 'The content to append to the current document',
+        },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'read_workspace_file',
+    description: 'Read the complete content of any file in the workspace by relative path',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: 'The relative path to the file in the workspace',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'grep',
+    description: 'Search for a regex pattern within the currently active document',
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern: {
+          type: 'string',
+          description: 'The regex pattern to search for in the current document',
+        },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'replace',
+    description: 'Replace target content with new content in the currently active document',
+    parameters: {
+      type: 'object',
+      properties: {
+        target: {
+          type: 'string',
+          description: 'The exact text to find and replace in the current document',
+        },
+        newContent: {
+          type: 'string',
+          description: 'The new content to replace the target with',
+        },
+      },
+      required: ['target', 'newContent'],
+    },
+  },
+  {
+    name: 'ls',
+    description: 'List the complete file tree structure of the workspace',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+];
+
+// Keep the old tool definitions for backward compatibility during transition
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: 'read_file',

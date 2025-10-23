@@ -62,6 +62,15 @@ export interface ExecutionContext {
 }
 
 /**
+ * Simplified Execution Context
+ * Context for simplified tool execution with DocumentService integration
+ */
+export interface SimplifiedExecutionContext {
+  documentService: IDocumentService;
+  workspace: FileSystemDirectoryHandle | null;
+}
+
+/**
  * Tool Execution Service Interface
  * Executes agent tool calls
  */

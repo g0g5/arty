@@ -50,8 +50,22 @@ describe('ToolExecutionService', () => {
   });
 
   describe('getAvailableTools', () => {
-    it('should return list of available tools', () => {
+    it('should return simplified tools by default', () => {
       const tools = service.getAvailableTools();
+      
+      expect(tools).toHaveLength(6);
+      expect(tools.map(t => t.name)).toEqual([
+        'read',
+        'write',
+        'read_workspace_file',
+        'grep',
+        'replace',
+        'ls',
+      ]);
+    });
+
+    it('should return legacy tools when useSimplified=false', () => {
+      const tools = service.getAvailableTools(false);
       
       expect(tools).toHaveLength(5);
       expect(tools.map(t => t.name)).toEqual([

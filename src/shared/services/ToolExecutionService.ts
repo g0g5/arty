@@ -1,23 +1,31 @@
 /**
  * Tool Execution Service
  * Executes agent tool calls with proper validation and error handling
+ * Supports both legacy and simplified tool sets
  */
 
 import type { ToolDefinition } from '../types/models';
-import type { IToolExecutionService, ExecutionContext } from '../types/services';
-import { TOOL_DEFINITIONS } from '../constants/tools';
+import type { 
+  IToolExecutionService, 
+  ExecutionContext, 
+  SimplifiedExecutionContext
+} from '../types/services';
+import { TOOL_DEFINITIONS, SIMPLIFIED_TOOL_DEFINITIONS } from '../constants/tools';
 import { FileSystemService } from './FileSystemService';
+import { DocumentService } from './DocumentService';
 
 /**
  * Tool Execution Service Implementation
- * Handles execution of all agent tools
+ * Handles execution of both legacy and simplified agent tools
  */
 export class ToolExecutionService implements IToolExecutionService {
   private static instance: ToolExecutionService;
   private fileSystemService: FileSystemService;
+  private documentService: DocumentService;
 
   private constructor() {
     this.fileSystemService = FileSystemService.getInstance();
+    this.documentService = DocumentService.getInstance();
   }
 
   /**
@@ -31,7 +39,7 @@ export class ToolExecutionService implements IToolExecutionService {
   }
 
   /**
-   * Execute a tool by name with given arguments
+   * Execute a tool by name with given arguments (legacy method)
    * @param toolName Name of the tool to execute
    * @param args Arguments for the tool
    * @param context Execution context (current file, workspace)
@@ -43,7 +51,18 @@ export class ToolExecutionService implements IToolExecutionService {
     args: Record<string, any>,
     context: ExecutionContext
   ): Promise<any> {
-    // Find tool definition
+    // Check if it's a simplified tool first
+    const simplifiedToolDef = SIMPLIFIED_TOOL_DEFINITIONS.find(t => t.name === toolName);
+    if (simplifiedToolDef) {
+      // Create simplified context
+      const simplifiedContext: SimplifiedExecutionContext = {
+        documentService: this.documentService,
+        workspace: context.workspace
+      };
+      return await this.executeSimplifiedTool(toolName, args, simplifiedContext);
+    }
+
+    // Fall back to legacy tool execution
     const toolDef = TOOL_DEFINITIONS.find(t => t.name === toolName);
     if (!toolDef) {
       throw new Error(`Unknown tool: ${toolName}`);
@@ -52,7 +71,7 @@ export class ToolExecutionService implements IToolExecutionService {
     // Validate required arguments
     this.validateArguments(toolDef, args);
 
-    // Execute the appropriate tool
+    // Execute the appropriate legacy tool
     switch (toolName) {
       case 'read_file':
         return await this.executeReadFile(args, context);
@@ -70,11 +89,58 @@ export class ToolExecutionService implements IToolExecutionService {
   }
 
   /**
-   * Get list of available tools
+   * Execute a simplified tool by name with given arguments
+   * @param toolName Name of the simplified tool to execute
+   * @param args Arguments for the tool
+   * @param context Simplified execution context with DocumentService
+   * @returns Tool execution result
+   * @throws {Error} If tool is not found, arguments are invalid, or execution fails
+   */
+  public async executeSimplifiedTool(
+    toolName: string,
+    args: Record<string, any>,
+    context: SimplifiedExecutionContext
+  ): Promise<any> {
+    // Find simplified tool definition
+    const toolDef = SIMPLIFIED_TOOL_DEFINITIONS.find(t => t.name === toolName);
+    if (!toolDef) {
+      throw new Error(`Unknown simplified tool: ${toolName}`);
+    }
+
+    // Simple required parameter validation
+    const required = toolDef.parameters.required || [];
+    for (const param of required) {
+      if (!(param in args) || args[param] === undefined || args[param] === null) {
+        throw new Error(`Missing required argument: ${param}`);
+      }
+    }
+
+    // Execute the appropriate simplified tool
+    switch (toolName) {
+      case 'read':
+        return await this.executeRead(args, context);
+      case 'write':
+        return await this.executeWrite(args, context);
+      case 'read_workspace_file':
+        return await this.executeReadFileSimplified(args, context);
+      case 'grep':
+        return await this.executeGrep(args, context);
+      case 'replace':
+        return await this.executeReplace(args, context);
+      case 'ls':
+        return await this.executeLs(args, context);
+      default:
+        throw new Error(`Simplified tool not implemented: ${toolName}`);
+    }
+  }
+
+  /**
+   * Get list of available tools (returns simplified tools by default)
+   * @param useSimplified Whether to return simplified tools (default: true)
    * @returns Array of tool definitions
    */
-  public getAvailableTools(): ToolDefinition[] {
-    return TOOL_DEFINITIONS;
+  public getAvailableTools(useSimplified: boolean = true): ToolDefinition[] {
+    return useSimplified ? SIMPLIFIED_TOOL_DEFINITIONS : TOOL_DEFINITIONS;
   }
 
   /**
@@ -92,6 +158,160 @@ export class ToolExecutionService implements IToolExecutionService {
       }
     }
   }
+
+  // ========================================
+  // SIMPLIFIED TOOL EXECUTION METHODS
+  // ========================================
+
+  /**
+   * Execute read tool - returns current document content
+   * @param _args No parameters required
+   * @param context Simplified execution context
+   * @returns Current document content as string
+   */
+  private async executeRead(
+    _args: Record<string, any>,
+    context: SimplifiedExecutionContext
+  ): Promise<string> {
+    try {
+      return context.documentService.getContent();
+    } catch (error) {
+      throw new Error(`Failed to read current document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Execute write tool - appends content to current document
+   * @param args Object with content parameter
+   * @param context Simplified execution context
+   * @returns Success message
+   */
+  private async executeWrite(
+    args: Record<string, any>,
+    context: SimplifiedExecutionContext
+  ): Promise<{ success: boolean; message: string }> {
+    const content = args.content as string;
+    
+    if (typeof content !== 'string') {
+      throw new Error('Content parameter must be a string');
+    }
+
+    try {
+      await context.documentService.appendContent(content);
+      return {
+        success: true,
+        message: `Appended ${content.length} characters to current document`
+      };
+    } catch (error) {
+      throw new Error(`Failed to write to current document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Execute read_file tool (simplified) - reads workspace file by path
+   * @param args Object with path parameter
+   * @param context Simplified execution context
+   * @returns File content as string
+   */
+  private async executeReadFileSimplified(
+    args: Record<string, any>,
+    context: SimplifiedExecutionContext
+  ): Promise<string> {
+    const path = args.path as string;
+    
+    if (typeof path !== 'string') {
+      throw new Error('Path parameter must be a string');
+    }
+
+    if (!context.workspace) {
+      throw new Error('No workspace is currently open');
+    }
+
+    try {
+      const fileHandle = await this.fileSystemService.findFile(context.workspace, path);
+      const content = await this.fileSystemService.readFile(fileHandle);
+      return content;
+    } catch (error) {
+      throw new Error(`Failed to read file '${path}': ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Execute grep tool - searches current document with regex pattern
+   * @param args Object with pattern parameter
+   * @param context Simplified execution context
+   * @returns Array of match results
+   */
+  private async executeGrep(
+    args: Record<string, any>,
+    context: SimplifiedExecutionContext
+  ): Promise<Array<{ line: number; column: number; match: string; context: string }>> {
+    const pattern = args.pattern as string;
+    
+    if (typeof pattern !== 'string') {
+      throw new Error('Pattern parameter must be a string');
+    }
+
+    try {
+      return context.documentService.searchContent(pattern);
+    } catch (error) {
+      throw new Error(`Failed to search current document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Execute replace tool - replaces target content with new content in current document
+   * @param args Object with target and newContent parameters
+   * @param context Simplified execution context
+   * @returns Success message with replacement details
+   */
+  private async executeReplace(
+    args: Record<string, any>,
+    context: SimplifiedExecutionContext
+  ): Promise<{ success: boolean; message: string }> {
+    const target = args.target as string;
+    const newContent = args.newContent as string;
+    
+    if (typeof target !== 'string' || typeof newContent !== 'string') {
+      throw new Error('Target and newContent parameters must be strings');
+    }
+
+    try {
+      await context.documentService.replaceContent(target, newContent);
+      return {
+        success: true,
+        message: `Successfully replaced content in current document`
+      };
+    } catch (error) {
+      throw new Error(`Failed to replace content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Execute ls tool - returns workspace file tree structure
+   * @param _args No parameters required
+   * @param context Simplified execution context
+   * @returns Formatted file tree structure
+   */
+  private async executeLs(
+    _args: Record<string, any>,
+    context: SimplifiedExecutionContext
+  ): Promise<string> {
+    if (!context.workspace) {
+      throw new Error('No workspace is currently open');
+    }
+
+    try {
+      const tree = await this.fileSystemService.getFileTree(context.workspace, '');
+      return this.formatFileTree(tree);
+    } catch (error) {
+      throw new Error(`Failed to list workspace files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // ========================================
+  // LEGACY TOOL EXECUTION METHODS
+  // ========================================
 
   /**
    * Execute read_file tool

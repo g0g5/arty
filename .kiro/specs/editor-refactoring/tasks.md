@@ -54,28 +54,40 @@
   - Test error handling for file system operations
   - _Requirements: 2.2, 2.7_
 
-- [ ] 2. Refactor Tool System with Simplified Interface
+- [x] 2. Refactor Tool System with Simplified Interface
+
+
+
+
+
   - Replace existing complex tools with 6 simplified tools (read, write, read_file, grep, replace, ls)
   - Update tool definitions to remove optional parameters and complex validation
   - Integrate tools with DocumentService for current document operations
   - Update ToolExecutionService to use new simplified execution context
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 2.1 Create simplified tool definitions
+- [x] 2.1 Create simplified tool definitions
+
+
   - Define new SIMPLIFIED_TOOL_DEFINITIONS constant with 6 tools
   - Remove optional parameters and complex validation schemas
   - Create clear, single-purpose tool descriptions for LLM understanding
   - Update tool parameter types to be minimal and unambiguous
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-- [ ] 2.2 Update ToolExecutionService for simplified tools
+- [x] 2.2 Update ToolExecutionService for simplified tools
+
+
   - Modify executeTool method to handle new simplified tool set
   - Replace complex parameter validation with simple required checks
   - Integrate DocumentService for current document operations (read, write, grep, replace)
   - Update execution context to include DocumentService reference
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 2.3 Implement new tool execution methods
+- [x] 2.3 Implement new tool execution methods
+
+
+
   - Create executeRead method (no parameters, returns current document content)
   - Create executeWrite method (content parameter, appends to current document)
   - Create executeReadFile method (path parameter, reads workspace file)
@@ -84,7 +96,11 @@
   - Create executeLs method (no parameters, returns workspace file tree)
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-- [ ]* 2.4 Write unit tests for simplified tools
+- [-] 2.4 Write unit tests for simplified tools
+
+
+
+
   - Test each tool function in isolation with DocumentService integration
   - Test error handling for missing current document or workspace
   - Test tool execution with various content types and patterns
@@ -119,7 +135,8 @@
   - Handle restoration errors gracefully with user feedback
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ]* 3.4 Write unit tests for ChatHistoryService
+- [ ] 3.4 Write unit tests for ChatHistoryService
+
   - Test session archival and title generation logic
   - Test session restoration and deletion functionality
   - Test persistent storage operations and error handling
@@ -154,7 +171,8 @@
   - Update chat session state management to work with restored sessions
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ]* 4.4 Write integration tests for chat history UI
+- [ ] 4.4 Write integration tests for chat history UI
+
   - Test new chat creation and session archival workflow
   - Test history modal display and session restoration
   - Test error handling for failed restoration operations
@@ -189,7 +207,8 @@
   - Maintain workspace and document context across editor sessions
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ]* 5.4 Write integration tests for DocumentService UI integration
+- [ ] 5.4 Write integration tests for DocumentService UI integration
+
   - Test TextEditorPanel updates based on DocumentService events
   - Test document state indicators and auto-save functionality
   - Test editor cleanup and state preservation
@@ -224,7 +243,8 @@
   - Implement debouncing for auto-save operations
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ]* 6.4 Write end-to-end integration tests
+- [ ] 6.4 Write end-to-end integration tests
+
   - Test complete workflow from tool execution to UI updates
   - Test error handling and recovery across all services
   - Test performance with large files and workspaces
@@ -259,7 +279,8 @@
   - Create verification checklist for quality assurance
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ]* 7.4 Create comprehensive test suite
+- [ ] 7.4 Create comprehensive test suite
+
   - Ensure all critical paths have automated test coverage
   - Add performance benchmarks for large file operations
   - Create regression test suite for future development
