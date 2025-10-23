@@ -4,6 +4,8 @@ interface ChatHeaderProps {
     availableModels: Array<{ id: string; name: string; providerId: string }>;
     onModelChange: (modelId: string) => void;
     onToolsToggle: (enabled: boolean) => void;
+    onNewChat?: () => void;
+    onShowHistory?: () => void;
 }
 
 export function ChatHeader({
@@ -12,9 +14,38 @@ export function ChatHeader({
     availableModels,
     onModelChange,
     onToolsToggle,
+    onNewChat,
+    onShowHistory,
 }: ChatHeaderProps) {
     return (
         <div className="border-b border-gray-200 p-4 space-y-3">
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+                <button
+                    onClick={onNewChat}
+                    className="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                    title="Start a new chat session"
+                >
+                    <span className="flex items-center justify-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        New Chat
+                    </span>
+                </button>
+                <button
+                    onClick={onShowHistory}
+                    className="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                    title="View chat history"
+                >
+                    <span className="flex items-center justify-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        History
+                    </span>
+                </button>
+            </div>
             {/* Model Selector */}
             <div>
                 <label htmlFor="model-selector" className="block text-xs font-medium text-gray-700 mb-1">

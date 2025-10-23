@@ -13,6 +13,7 @@ export { TextEditorPanel } from './TextEditorPanel';
 // Chat Panel Components
 export { ChatPanel } from './ChatPanel';
 export { ChatHeader } from './ChatHeader';
+export { ChatHistoryModal } from './ChatHistoryModal';
 export { MessageList } from './MessageList';
 export { UserMessage } from './UserMessage';
 export { AssistantMessage } from './AssistantMessage';

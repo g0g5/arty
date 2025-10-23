@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { WorkspacePanel, TextEditorPanel, ChatPanel } from './components';
+import { WorkspacePanel, TextEditorPanel, ChatPanel, ChatHistoryModal } from './components';
 import type { ChatSession, ProviderProfile } from '../shared/types/models';
+import type { ChatHistoryRecord } from '../shared/services/ChatHistoryService';
 import { storageService } from '../shared/services/StorageService';
 import { chatSessionManager } from '../shared/services/ChatSessionManager';
+import { chatHistoryService } from '../shared/services/ChatHistoryService';
 import { commandParserService } from '../shared/services/CommandParserService';
 import { fileSystemService } from '../shared/services/FileSystemService';
 import type { ExecutionContext, ChatContext } from '../shared/types/services';
@@ -30,12 +32,20 @@ function App() {
   // Track file change history for revert functionality
   const [fileChangeHistory, setFileChangeHistory] = useState<FileChangeSnapshot[]>([]);
 
+  // History modal state
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyRecords, setHistoryRecords] = useState<ChatHistoryRecord[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
   // Load providers and initialize session on mount
   useEffect(() => {
     const loadProviders = async () => {
       try {
         const loadedProviders = await storageService.getProviders();
         setProviders(loadedProviders);
+
+        // Load chat history
+        await chatHistoryService.loadHistory();
 
         // Create initial session with default model
         const defaultModel = loadedProviders.length > 0 && loadedProviders[0].models.length > 0
@@ -178,19 +188,109 @@ function App() {
     }
   };
 
-  const handleNewCommand = (_context: ChatContext) => {
+  const handleNewChat = async () => {
     if (!chatSession) return;
 
-    // Create a new chat session with same settings
-    const newSession = chatSessionManager.createSession(
-      chatSession.selectedModel,
-      chatSession.toolsEnabled
-    );
-    
-    setChatSession(newSession);
+    try {
+      // Archive current session if it has messages
+      if (chatSession.messages.length > 0) {
+        await chatHistoryService.archiveSession(chatSession);
+      }
 
-    // Clear file change history for new session
-    setFileChangeHistory([]);
+      // Create a new chat session with same settings
+      const newSession = chatSessionManager.createSession(
+        chatSession.selectedModel,
+        chatSession.toolsEnabled
+      );
+      
+      setChatSession(newSession);
+
+      // Clear file change history for new session
+      setFileChangeHistory([]);
+
+      // Clear any errors
+      setError(null);
+    } catch (err) {
+      console.error('Failed to create new chat:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create new chat');
+    }
+  };
+
+  const handleShowHistory = async () => {
+    try {
+      setIsLoadingHistory(true);
+      const records = await chatHistoryService.getArchivedSessions();
+      setHistoryRecords(records);
+      setIsHistoryModalOpen(true);
+    } catch (err) {
+      console.error('Failed to load history:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load chat history');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleRestoreSession = async (historyId: string) => {
+    if (!chatSession) return;
+
+    try {
+      setIsLoadingHistory(true);
+
+      // Archive current session if it has messages
+      if (chatSession.messages.length > 0) {
+        await chatHistoryService.archiveSession(chatSession);
+      }
+
+      // Restore the selected session
+      const restoredSession = await chatHistoryService.restoreSession(historyId);
+      
+      // Create a new session with the restored data
+      const newSession = chatSessionManager.createSession(
+        restoredSession.selectedModel,
+        restoredSession.toolsEnabled
+      );
+
+      // Manually set the messages and other properties
+      const session = chatSessionManager.getSession(newSession.id);
+      if (session) {
+        session.messages = restoredSession.messages;
+        session.createdAt = restoredSession.createdAt;
+      }
+
+      setChatSession({ ...newSession, messages: restoredSession.messages });
+
+      // Clear file change history for restored session
+      setFileChangeHistory([]);
+
+      // Close the modal
+      setIsHistoryModalOpen(false);
+
+      // Clear any errors
+      setError(null);
+    } catch (err) {
+      console.error('Failed to restore session:', err);
+      setError(err instanceof Error ? err.message : 'Failed to restore chat session');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleDeleteHistory = async (historyId: string) => {
+    try {
+      await chatHistoryService.deleteArchivedSession(historyId);
+      
+      // Refresh the history list
+      const records = await chatHistoryService.getArchivedSessions();
+      setHistoryRecords(records);
+    } catch (err) {
+      console.error('Failed to delete history:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete chat history');
+    }
+  };
+
+  const handleNewCommand = (_context: ChatContext) => {
+    // Delegate to handleNewChat
+    handleNewChat();
   };
 
   const handleRevertCommand = async (_context: ChatContext) => {
@@ -253,12 +353,24 @@ function App() {
             onCommand={handleCommand}
             onModelChange={handleModelChange}
             onToolsToggle={handleToolsToggle}
+            onNewChat={handleNewChat}
+            onShowHistory={handleShowHistory}
             isLoading={isLoading}
             error={error}
             onErrorDismiss={() => setError(null)}
           />
         )}
       </div>
+
+      {/* Chat History Modal */}
+      <ChatHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        onRestore={handleRestoreSession}
+        onDelete={handleDeleteHistory}
+        historyRecords={historyRecords}
+        isLoading={isLoadingHistory}
+      />
     </div>
   );
 }

@@ -10,6 +10,8 @@ interface ChatPanelProps {
   onCommand: (command: string) => void;
   onModelChange: (modelId: string) => void;
   onToolsToggle: (enabled: boolean) => void;
+  onNewChat?: () => void;
+  onShowHistory?: () => void;
   isLoading?: boolean;
   error?: string | null;
   onErrorDismiss?: () => void;
@@ -22,6 +24,8 @@ export function ChatPanel({
   onCommand,
   onModelChange,
   onToolsToggle,
+  onNewChat,
+  onShowHistory,
   isLoading = false,
   error = null,
   onErrorDismiss,
@@ -44,6 +48,8 @@ export function ChatPanel({
         availableModels={availableModels}
         onModelChange={onModelChange}
         onToolsToggle={onToolsToggle}
+        onNewChat={onNewChat}
+        onShowHistory={onShowHistory}
       />
 
       {/* Error Banner */}

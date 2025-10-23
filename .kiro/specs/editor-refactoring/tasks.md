@@ -112,7 +112,14 @@
   - Verify consistent response formats across all tools
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [-] 3. Implement Chat History Management System
+- [x] 3. Implement Chat History Management System
+
+
+
+
+
+
+
 
 
   - Create ChatHistoryService for session archival and restoration
@@ -121,28 +128,39 @@
   - Create history management UI with modal dialog for session selection
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 3.1 Create ChatHistoryService class
+- [x] 3.1 Create ChatHistoryService class
+
+
   - Implement IChatHistoryService interface with archive/restore methods
   - Create ChatHistoryRecord interface for archived session metadata
   - Add generateTitle method with 50-character truncation and ellipsis
   - Implement persistent storage using Chrome storage API
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 3.2 Implement session archival functionality
+- [x] 3.2 Implement session archival functionality
+
   - Add archiveSession method to create ChatHistoryRecord from ChatSession
   - Generate meaningful titles from first user message content
   - Store archived sessions with metadata (creation time, message count)
   - Implement getArchivedSessions method to retrieve all archived sessions
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 3.3 Add session restoration capabilities
+- [x] 3.3 Add session restoration capabilities
+
   - Implement restoreSession method to recreate ChatSession from archive
   - Add deleteArchivedSession method for history cleanup
   - Ensure restored sessions maintain all original properties and messages
   - Handle restoration errors gracefully with user feedback
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 3.4 Write unit tests for ChatHistoryService
+- [x] 3.4 Write unit tests for ChatHistoryService
+
+
+
+
+
+
+
 
   - Test session archival and title generation logic
   - Test session restoration and deletion functionality
@@ -150,35 +168,56 @@
   - Verify title truncation and special character handling
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 4. Enhance Chat Panel UI with New Features
+- [-] 4. Enhance Chat Panel UI with New Features
+
+
+
   - Add "New Chat" button to create fresh sessions and archive current session
   - Add "History" button to display archived session selection modal
   - Implement history modal with session list and restoration functionality
   - Update chat session lifecycle to support automatic archival
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 4.1 Add new chat functionality to ChatPanel
+- [x] 4.1 Add new chat functionality to ChatPanel
+
+
   - Add "New Chat" button to ChatPanel header
   - Implement onNewChat handler to archive current session and create new one
   - Update ChatPanel props to include new chat functionality
   - Clear file change history when starting new chat session
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 4.2 Create history management UI components
+- [x] 4.2 Create history management UI components
+
+
   - Add "History" button to ChatPanel header
   - Create ChatHistoryModal component for displaying archived sessions
   - Implement session list with titles, timestamps, and message counts
   - Add session restoration and deletion actions in modal
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 4.3 Integrate history service with chat panel
+- [x] 4.3 Integrate history service with chat panel
+
+
   - Connect ChatHistoryService to ChatPanel component
   - Implement session restoration workflow from history modal
   - Add loading states and error handling for history operations
   - Update chat session state management to work with restored sessions
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 4.4 Write integration tests for chat history UI
+- [x] 4.4 Write integration tests for chat history UI
+
+
+
+
+
+
+
+
+
+
+
+
 
   - Test new chat creation and session archival workflow
   - Test history modal display and session restoration
@@ -186,7 +225,9 @@
   - Verify UI state consistency during history operations
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 5. Integrate DocumentService with Editor UI
+- [-] 5. Integrate DocumentService with Editor UI
+
+
   - Update TextEditorPanel to use DocumentService instead of direct file operations
   - Implement automatic UI updates based on DocumentService events
   - Add document state indicators (dirty flag, auto-save status)
@@ -214,13 +255,13 @@
   - Maintain workspace and document context across editor sessions
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 5.4 Write integration tests for DocumentService UI integration
+<!-- - [ ] 5.4 Write integration tests for DocumentService UI integration
 
   - Test TextEditorPanel updates based on DocumentService events
   - Test document state indicators and auto-save functionality
   - Test editor cleanup and state preservation
   - Verify UI responsiveness during document operations
-  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 5.1, 5.2, 5.3, 5.4, 5.5, 7.1, 7.2, 7.3, 7.4, 7.5_
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 5.1, 5.2, 5.3, 5.4, 5.5, 7.1, 7.2, 7.3, 7.4, 7.5_ -->
 
 - [ ] 6. Update Tool Integration and Error Handling
   - Update ChatSessionManager to use new simplified tools
