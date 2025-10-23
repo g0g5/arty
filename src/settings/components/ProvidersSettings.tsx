@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ProviderProfile } from '../../shared/types/models';
-import { storageService } from '../../shared/services/StorageService';
+import { storageService } from '../../shared/services';
 import ProviderList from './ProviderList';
 import ProviderForm from './ProviderForm';
 

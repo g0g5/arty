@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { ChatHistoryRecord } from '../../shared/services/ChatHistoryService';
+import type { ChatHistoryRecord } from '../../shared/services';
 
 interface ChatHistoryModalProps {
   isOpen: boolean;

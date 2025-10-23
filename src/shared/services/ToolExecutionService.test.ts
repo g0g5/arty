@@ -672,7 +672,7 @@ describe('ToolExecutionService', () => {
 
         await expect(
           service.executeSimplifiedTool('read', {}, simplifiedContext)
-        ).rejects.toThrow('Failed to read current document');
+        ).rejects.toThrow('No document is currently loaded');
       });
 
       it('should work with empty document', async () => {
@@ -728,7 +728,7 @@ describe('ToolExecutionService', () => {
 
         await expect(
           service.executeSimplifiedTool('write', { content: 'test' }, simplifiedContext)
-        ).rejects.toThrow('Failed to write to current document');
+        ).rejects.toThrow('No document is currently loaded');
       });
 
       it('should handle empty content string', async () => {
@@ -857,7 +857,7 @@ describe('ToolExecutionService', () => {
 
         await expect(
           service.executeSimplifiedTool('grep', { pattern: 'test' }, simplifiedContext)
-        ).rejects.toThrow('Failed to search current document');
+        ).rejects.toThrow('No document is currently loaded');
       });
 
       it('should return empty array when no matches found', async () => {
@@ -891,7 +891,7 @@ describe('ToolExecutionService', () => {
 
         await expect(
           service.executeSimplifiedTool('grep', { pattern: '[invalid(' }, simplifiedContext)
-        ).rejects.toThrow('Failed to search current document');
+        ).rejects.toThrow('Invalid regex pattern');
       });
     });
 
@@ -951,7 +951,7 @@ describe('ToolExecutionService', () => {
             target: 'old',
             newContent: 'new'
           }, simplifiedContext)
-        ).rejects.toThrow('Failed to replace content');
+        ).rejects.toThrow('No document is currently loaded');
       });
 
       it('should throw error when target not found', async () => {
@@ -964,7 +964,7 @@ describe('ToolExecutionService', () => {
             target: 'nonexistent',
             newContent: 'new'
           }, simplifiedContext)
-        ).rejects.toThrow('Failed to replace content');
+        ).rejects.toThrow('Target content not found for replacement');
       });
 
       it('should handle empty strings', async () => {

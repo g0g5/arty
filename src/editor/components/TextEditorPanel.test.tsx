@@ -7,10 +7,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TextEditorPanel } from './TextEditorPanel';
-import { documentService } from '../../shared/services/DocumentService';
+import { documentService } from '../../shared/services';
 
 // Mock the DocumentService
-vi.mock('../../shared/services/DocumentService', () => {
+vi.mock('../../shared/services', () => {
   const listeners = new Set<any>();
   let mockDocument: any = null;
   

@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { fileSystemService } from '../../shared/services/FileSystemService';
+import { fileSystemService } from '../../shared/services';
 import type { FileTreeNode } from '../../shared/types';
 import WorkspaceTree from './WorkspaceTree.tsx';
 

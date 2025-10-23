@@ -5,8 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { documentService } from '../../shared/services/DocumentService';
-import type { DocumentEvent } from '../../shared/types/services';
+import { documentService } from '../../shared/services';
+import type { DocumentEvent } from '../../shared/services';
 
 interface TextEditorPanelProps {
   fileHandle: FileSystemFileHandle | null;

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { commandParserService } from '../../shared/services/CommandParserService';
+import { commandParserService } from '../../shared/services';
 
 interface ChatInputProps {
   onSend: (message: string) => void;

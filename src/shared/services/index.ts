@@ -13,4 +13,20 @@ export { ChatHistoryService, chatHistoryService } from './ChatHistoryService';
 export { ChatSessionManager, chatSessionManager } from './ChatSessionManager';
 export type { ChatHistoryRecord, IChatHistoryService } from './ChatHistoryService';
 export type { ChatSessionEvent, ChatSessionListener } from './ChatSessionManager';
-export type { IStorageService, IFileSystemService, ILLMService, IToolExecutionService, ICommandParserService, IDocumentService } from '../types/services';
+export type { 
+  IStorageService, 
+  IFileSystemService, 
+  ILLMService, 
+  IToolExecutionService, 
+  ICommandParserService, 
+  IDocumentService,
+  ExecutionContext,
+  SimplifiedExecutionContext,
+  ChatContext,
+  Command,
+  DocumentEvent,
+  DocumentState,
+  DocumentSnapshot,
+  DocumentEventListener,
+  MatchResult
+} from '../types/services';

@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
 import { WorkspacePanel, TextEditorPanel, ChatPanel, ChatHistoryModal } from './components';
 import type { ChatSession, ProviderProfile } from '../shared/types/models';
-import type { ChatHistoryRecord } from '../shared/services/ChatHistoryService';
-import { storageService } from '../shared/services/StorageService';
-import { chatSessionManager } from '../shared/services/ChatSessionManager';
-import { chatHistoryService } from '../shared/services/ChatHistoryService';
-import { commandParserService } from '../shared/services/CommandParserService';
-import { documentService } from '../shared/services/DocumentService';
-import type { ExecutionContext, ChatContext } from '../shared/types/services';
+import type { 
+  ChatHistoryRecord, 
+  ExecutionContext, 
+  ChatContext 
+} from '../shared/services';
+import { 
+  storageService, 
+  chatSessionManager, 
+  chatHistoryService, 
+  commandParserService, 
+  documentService 
+} from '../shared/services';
 
 function App() {
   const [currentFile, setCurrentFile] = useState<{

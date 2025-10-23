@@ -7,11 +7,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ProvidersSettings from './ProvidersSettings';
-import { storageService } from '../../shared/services/StorageService';
+import { storageService } from '../../shared/services';
 import type { ProviderProfile } from '../../shared/types/models';
 
 // Mock the storage service
-vi.mock('../../shared/services/StorageService', () => ({
+vi.mock('../../shared/services', () => ({
   storageService: {
     getProviders: vi.fn(),
     saveProviders: vi.fn(),

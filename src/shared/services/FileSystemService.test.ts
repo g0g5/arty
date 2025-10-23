@@ -12,6 +12,7 @@ describe('FileSystemService', () => {
 
   beforeEach(() => {
     service = FileSystemService.getInstance();
+    service.clearCaches(); // Clear cache to prevent test pollution
     vi.clearAllMocks();
   });
 
@@ -280,9 +281,9 @@ describe('FileSystemService', () => {
 
       const mockDirHandle = {
         kind: 'directory',
-        name: 'root',
-        values: vi.fn().mockReturnValue({
-          [Symbol.asyncIterator]: async function* () {
+        name: 'permission-denied-dir',
+        values: () => ({
+          async *[Symbol.asyncIterator]() {
             throw permissionError;
           }
         })
