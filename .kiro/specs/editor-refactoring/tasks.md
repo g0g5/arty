@@ -264,43 +264,62 @@
   - Maintain workspace and document context across editor sessions
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-<!-- - [ ] 5.4 Write integration tests for DocumentService UI integration
+- [x] 5.4 Write integration tests for DocumentService UI integration
+
+
+
+
+
 
   - Test TextEditorPanel updates based on DocumentService events
   - Test document state indicators and auto-save functionality
   - Test editor cleanup and state preservation
   - Verify UI responsiveness during document operations
-  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 5.1, 5.2, 5.3, 5.4, 5.5, 7.1, 7.2, 7.3, 7.4, 7.5_ -->
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 5.1, 5.2, 5.3, 5.4, 5.5, 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 6. Update Tool Integration and Error Handling
+- [x] 6. Update Tool Integration and Error Handling
+
+
+
+
+
   - Update ChatSessionManager to use new simplified tools
   - Implement consistent error handling across all new services
   - Add performance optimizations for large document operations
   - Create comprehensive error recovery mechanisms
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 7.1, 7.2, 7.3, 7.4, 7.5, 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 6.1 Update ChatSessionManager for new tools
+- [x] 6.1 Update ChatSessionManager for new tools
+
+
   - Modify tool execution context to include DocumentService
   - Update tool calling workflow to use simplified tool definitions
   - Ensure backward compatibility during transition period
   - Test tool execution with new DocumentService integration
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 6.2 Implement comprehensive error handling
+
+- [x] 6.2 Implement comprehensive error handling
+
   - Create consistent error response format across all services
   - Add graceful degradation for file system access failures
   - Implement automatic retry mechanisms for transient failures
   - Add user-friendly error messages and recovery suggestions
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 6.3 Add performance optimizations
+- [x] 6.3 Add performance optimizations
+
+
   - Implement content caching in DocumentService for large files
   - Optimize regex search operations for large documents
   - Add lazy loading for workspace file tree generation
   - Implement debouncing for auto-save operations
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 6.4 Write end-to-end integration tests
+- [-] 6.4 Write end-to-end integration tests
+
+
+
 
   - Test complete workflow from tool execution to UI updates
   - Test error handling and recovery across all services

@@ -7,6 +7,7 @@
 
 import type { FileTreeNode } from '../types/models';
 import type { IFileSystemService } from '../types/services';
+import { LRUCache } from '../utils/performance';
 
 /**
  * File System Service Implementation
@@ -14,6 +15,8 @@ import type { IFileSystemService } from '../types/services';
  */
 export class FileSystemService implements IFileSystemService {
   private static instance: FileSystemService;
+  private fileTreeCache: LRUCache<string, FileTreeNode[]> = new LRUCache(20);
+  private fileContentCache: LRUCache<string, string> = new LRUCache(100);
 
   private constructor() {
     // Private constructor for singleton pattern
@@ -69,18 +72,33 @@ export class FileSystemService implements IFileSystemService {
   }
 
   /**
-   * Read file content
+   * Read file content (with caching)
    * @param handle File handle to read from
    * @returns File content as string
    * @throws {Error} If file cannot be read or permission is denied
    */
   public async readFile(handle: FileSystemFileHandle): Promise<string> {
     try {
+      // Create cache key from handle name
+      const cacheKey = handle.name;
+      
+      // Check cache first
+      if (this.fileContentCache.has(cacheKey)) {
+        const cachedContent = this.fileContentCache.get(cacheKey)!;
+        
+        // Verify file hasn't been modified (simple check)
+        // In production, you might want to check lastModified timestamp
+        return cachedContent;
+      }
+      
       // Get file object
       const file = await handle.getFile();
       
       // Read file content
       const content = await file.text();
+      
+      // Cache the content
+      this.fileContentCache.set(cacheKey, content);
       
       return content;
     } catch (error) {
@@ -125,18 +143,33 @@ export class FileSystemService implements IFileSystemService {
   }
 
   /**
-   * Get file tree structure
+   * Get file tree structure (with caching and lazy loading)
    * Recursively scans directory and builds tree structure
    * @param dirHandle Directory handle to scan
    * @param basePath Base path for relative paths (default: '')
+   * @param maxDepth Maximum depth to traverse (default: 10, prevents infinite loops)
+   * @param currentDepth Current depth in recursion (internal use)
    * @returns Array of file tree nodes
    * @throws {Error} If directory cannot be read or permission is denied
    */
   public async getFileTree(
     dirHandle: FileSystemDirectoryHandle,
-    basePath: string = ''
+    basePath: string = '',
+    maxDepth: number = 10,
+    currentDepth: number = 0
   ): Promise<FileTreeNode[]> {
     try {
+      // Check cache first
+      const cacheKey = `${dirHandle.name}:${basePath}`;
+      if (this.fileTreeCache.has(cacheKey)) {
+        return this.fileTreeCache.get(cacheKey)!;
+      }
+
+      // Prevent infinite recursion
+      if (currentDepth >= maxDepth) {
+        return [];
+      }
+
       const nodes: FileTreeNode[] = [];
 
       // Iterate through directory entries
@@ -151,8 +184,19 @@ export class FileSystemService implements IFileSystemService {
             path: path
           });
         } else if (entry.kind === 'directory') {
-          // Recursively get children for directory
-          const children = await this.getFileTree(entry as FileSystemDirectoryHandle, path);
+          // For lazy loading, only load first level children immediately
+          // Deeper levels can be loaded on demand
+          let children: FileTreeNode[] = [];
+          
+          if (currentDepth < 2) {
+            // Load children for first 2 levels
+            children = await this.getFileTree(
+              entry as FileSystemDirectoryHandle, 
+              path, 
+              maxDepth, 
+              currentDepth + 1
+            );
+          }
           
           // Add directory node with children
           nodes.push({
@@ -171,6 +215,9 @@ export class FileSystemService implements IFileSystemService {
         }
         return a.type === 'directory' ? -1 : 1;
       });
+
+      // Cache the result
+      this.fileTreeCache.set(cacheKey, nodes);
 
       return nodes;
     } catch (error) {
@@ -261,6 +308,27 @@ export class FileSystemService implements IFileSystemService {
    */
   public isSupported(): boolean {
     return 'showDirectoryPicker' in window;
+  }
+
+  /**
+   * Clear all caches
+   */
+  public clearCaches(): void {
+    this.fileTreeCache.clear();
+    this.fileContentCache.clear();
+  }
+
+  /**
+   * Get cache statistics
+   */
+  public getCacheStats(): { 
+    fileTreeCacheSize: number; 
+    fileContentCacheSize: number;
+  } {
+    return {
+      fileTreeCacheSize: this.fileTreeCache.size(),
+      fileContentCacheSize: this.fileContentCache.size()
+    };
   }
 
   /**

@@ -13,6 +13,11 @@ import type {
 import { TOOL_DEFINITIONS, SIMPLIFIED_TOOL_DEFINITIONS } from '../constants/tools';
 import { FileSystemService } from './FileSystemService';
 import { DocumentService } from './DocumentService';
+import { 
+  createServiceError, 
+  ErrorCode, 
+  toServiceError
+} from '../utils/errorHandling';
 
 /**
  * Tool Execution Service Implementation
@@ -51,40 +56,56 @@ export class ToolExecutionService implements IToolExecutionService {
     args: Record<string, any>,
     context: ExecutionContext
   ): Promise<any> {
-    // Check if it's a simplified tool first
-    const simplifiedToolDef = SIMPLIFIED_TOOL_DEFINITIONS.find(t => t.name === toolName);
-    if (simplifiedToolDef) {
-      // Create simplified context
-      const simplifiedContext: SimplifiedExecutionContext = {
-        documentService: this.documentService,
-        workspace: context.workspace
-      };
-      return await this.executeSimplifiedTool(toolName, args, simplifiedContext);
-    }
+    try {
+      // Check if it's a simplified tool first
+      const simplifiedToolDef = SIMPLIFIED_TOOL_DEFINITIONS.find(t => t.name === toolName);
+      if (simplifiedToolDef) {
+        // Create simplified context
+        const simplifiedContext: SimplifiedExecutionContext = {
+          documentService: this.documentService,
+          workspace: context.workspace
+        };
+        return await this.executeSimplifiedTool(toolName, args, simplifiedContext);
+      }
 
-    // Fall back to legacy tool execution
-    const toolDef = TOOL_DEFINITIONS.find(t => t.name === toolName);
-    if (!toolDef) {
-      throw new Error(`Unknown tool: ${toolName}`);
-    }
+      // Fall back to legacy tool execution
+      const toolDef = TOOL_DEFINITIONS.find(t => t.name === toolName);
+      if (!toolDef) {
+        throw createServiceError(
+          ErrorCode.TOOL_NOT_FOUND,
+          `Unknown tool: ${toolName}`,
+          { toolName },
+          false,
+          ['Check available tools', 'Verify tool name spelling']
+        );
+      }
 
-    // Validate required arguments
-    this.validateArguments(toolDef, args);
+      // Validate required arguments
+      this.validateArguments(toolDef, args);
 
-    // Execute the appropriate legacy tool
-    switch (toolName) {
-      case 'read_file':
-        return await this.executeReadFile(args, context);
-      case 'write_append':
-        return await this.executeWriteAppend(args, context);
-      case 'find_replace':
-        return await this.executeFindReplace(args, context);
-      case 'read_workspace':
-        return await this.executeReadWorkspace(args, context);
-      case 'grep_search':
-        return await this.executeGrepSearch(args, context);
-      default:
-        throw new Error(`Tool not implemented: ${toolName}`);
+      // Execute the appropriate legacy tool
+      switch (toolName) {
+        case 'read_file':
+          return await this.executeReadFile(args, context);
+        case 'write_append':
+          return await this.executeWriteAppend(args, context);
+        case 'find_replace':
+          return await this.executeFindReplace(args, context);
+        case 'read_workspace':
+          return await this.executeReadWorkspace(args, context);
+        case 'grep_search':
+          return await this.executeGrepSearch(args, context);
+        default:
+          throw createServiceError(
+            ErrorCode.TOOL_NOT_FOUND,
+            `Tool not implemented: ${toolName}`,
+            { toolName },
+            false
+          );
+      }
+    } catch (error) {
+      // Convert to ServiceError if not already
+      throw toServiceError(error);
     }
   }
 
@@ -101,36 +122,58 @@ export class ToolExecutionService implements IToolExecutionService {
     args: Record<string, any>,
     context: SimplifiedExecutionContext
   ): Promise<any> {
-    // Find simplified tool definition
-    const toolDef = SIMPLIFIED_TOOL_DEFINITIONS.find(t => t.name === toolName);
-    if (!toolDef) {
-      throw new Error(`Unknown simplified tool: ${toolName}`);
-    }
-
-    // Simple required parameter validation
-    const required = toolDef.parameters.required || [];
-    for (const param of required) {
-      if (!(param in args) || args[param] === undefined || args[param] === null) {
-        throw new Error(`Missing required argument: ${param}`);
+    try {
+      // Find simplified tool definition
+      const toolDef = SIMPLIFIED_TOOL_DEFINITIONS.find(t => t.name === toolName);
+      if (!toolDef) {
+        throw createServiceError(
+          ErrorCode.TOOL_NOT_FOUND,
+          `Unknown simplified tool: ${toolName}`,
+          { toolName },
+          false,
+          ['Use one of: read, write, read_workspace_file, grep, replace, ls']
+        );
       }
-    }
 
-    // Execute the appropriate simplified tool
-    switch (toolName) {
-      case 'read':
-        return await this.executeRead(args, context);
-      case 'write':
-        return await this.executeWrite(args, context);
-      case 'read_workspace_file':
-        return await this.executeReadFileSimplified(args, context);
-      case 'grep':
-        return await this.executeGrep(args, context);
-      case 'replace':
-        return await this.executeReplace(args, context);
-      case 'ls':
-        return await this.executeLs(args, context);
-      default:
-        throw new Error(`Simplified tool not implemented: ${toolName}`);
+      // Simple required parameter validation
+      const required = toolDef.parameters.required || [];
+      for (const param of required) {
+        if (!(param in args) || args[param] === undefined || args[param] === null) {
+          throw createServiceError(
+            ErrorCode.INVALID_ARGUMENTS,
+            `Missing required argument: ${param}`,
+            { toolName, param, providedArgs: Object.keys(args) },
+            false,
+            [`Provide the '${param}' parameter`, 'Check tool documentation']
+          );
+        }
+      }
+
+      // Execute the appropriate simplified tool
+      switch (toolName) {
+        case 'read':
+          return await this.executeRead(args, context);
+        case 'write':
+          return await this.executeWrite(args, context);
+        case 'read_workspace_file':
+          return await this.executeReadFileSimplified(args, context);
+        case 'grep':
+          return await this.executeGrep(args, context);
+        case 'replace':
+          return await this.executeReplace(args, context);
+        case 'ls':
+          return await this.executeLs(args, context);
+        default:
+          throw createServiceError(
+            ErrorCode.TOOL_NOT_FOUND,
+            `Simplified tool not implemented: ${toolName}`,
+            { toolName },
+            false
+          );
+      }
+    } catch (error) {
+      // Convert to ServiceError if not already
+      throw toServiceError(error);
     }
   }
 
@@ -154,7 +197,13 @@ export class ToolExecutionService implements IToolExecutionService {
     
     for (const param of required) {
       if (!(param in args) || args[param] === undefined || args[param] === null) {
-        throw new Error(`Missing required argument: ${param}`);
+        throw createServiceError(
+          ErrorCode.INVALID_ARGUMENTS,
+          `Missing required argument: ${param}`,
+          { toolName: toolDef.name, param, providedArgs: Object.keys(args) },
+          false,
+          [`Provide the '${param}' parameter`, 'Check tool documentation']
+        );
       }
     }
   }
@@ -176,7 +225,7 @@ export class ToolExecutionService implements IToolExecutionService {
     try {
       return context.documentService.getContent();
     } catch (error) {
-      throw new Error(`Failed to read current document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw toServiceError(error);
     }
   }
 
@@ -193,7 +242,13 @@ export class ToolExecutionService implements IToolExecutionService {
     const content = args.content as string;
     
     if (typeof content !== 'string') {
-      throw new Error('Content parameter must be a string');
+      throw createServiceError(
+        ErrorCode.INVALID_ARGUMENTS,
+        'Content parameter must be a string',
+        { providedType: typeof content },
+        false,
+        ['Provide content as a string']
+      );
     }
 
     try {
@@ -203,7 +258,7 @@ export class ToolExecutionService implements IToolExecutionService {
         message: `Appended ${content.length} characters to current document`
       };
     } catch (error) {
-      throw new Error(`Failed to write to current document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw toServiceError(error);
     }
   }
 
@@ -220,11 +275,23 @@ export class ToolExecutionService implements IToolExecutionService {
     const path = args.path as string;
     
     if (typeof path !== 'string') {
-      throw new Error('Path parameter must be a string');
+      throw createServiceError(
+        ErrorCode.INVALID_ARGUMENTS,
+        'Path parameter must be a string',
+        { providedType: typeof path },
+        false,
+        ['Provide path as a string']
+      );
     }
 
     if (!context.workspace) {
-      throw new Error('No workspace is currently open');
+      throw createServiceError(
+        ErrorCode.NO_WORKSPACE_OPEN,
+        'No workspace is currently open',
+        undefined,
+        false,
+        ['Open a workspace folder first']
+      );
     }
 
     try {
@@ -232,7 +299,13 @@ export class ToolExecutionService implements IToolExecutionService {
       const content = await this.fileSystemService.readFile(fileHandle);
       return content;
     } catch (error) {
-      throw new Error(`Failed to read file '${path}': ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw createServiceError(
+        ErrorCode.FILE_READ_ERROR,
+        `Failed to read file '${path}'`,
+        error,
+        true,
+        ['Check file path is correct', 'Verify file exists in workspace', 'Check file permissions']
+      );
     }
   }
 
@@ -249,13 +322,19 @@ export class ToolExecutionService implements IToolExecutionService {
     const pattern = args.pattern as string;
     
     if (typeof pattern !== 'string') {
-      throw new Error('Pattern parameter must be a string');
+      throw createServiceError(
+        ErrorCode.INVALID_ARGUMENTS,
+        'Pattern parameter must be a string',
+        { providedType: typeof pattern },
+        false,
+        ['Provide pattern as a string']
+      );
     }
 
     try {
       return context.documentService.searchContent(pattern);
     } catch (error) {
-      throw new Error(`Failed to search current document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw toServiceError(error);
     }
   }
 
@@ -273,7 +352,13 @@ export class ToolExecutionService implements IToolExecutionService {
     const newContent = args.newContent as string;
     
     if (typeof target !== 'string' || typeof newContent !== 'string') {
-      throw new Error('Target and newContent parameters must be strings');
+      throw createServiceError(
+        ErrorCode.INVALID_ARGUMENTS,
+        'Target and newContent parameters must be strings',
+        { targetType: typeof target, newContentType: typeof newContent },
+        false,
+        ['Provide both target and newContent as strings']
+      );
     }
 
     try {
@@ -283,7 +368,7 @@ export class ToolExecutionService implements IToolExecutionService {
         message: `Successfully replaced content in current document`
       };
     } catch (error) {
-      throw new Error(`Failed to replace content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw toServiceError(error);
     }
   }
 
@@ -298,14 +383,26 @@ export class ToolExecutionService implements IToolExecutionService {
     context: SimplifiedExecutionContext
   ): Promise<string> {
     if (!context.workspace) {
-      throw new Error('No workspace is currently open');
+      throw createServiceError(
+        ErrorCode.NO_WORKSPACE_OPEN,
+        'No workspace is currently open',
+        undefined,
+        false,
+        ['Open a workspace folder first']
+      );
     }
 
     try {
       const tree = await this.fileSystemService.getFileTree(context.workspace, '');
       return this.formatFileTree(tree);
     } catch (error) {
-      throw new Error(`Failed to list workspace files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw createServiceError(
+        ErrorCode.WORKSPACE_ACCESS_DENIED,
+        'Failed to list workspace files',
+        error,
+        true,
+        ['Check workspace permissions', 'Try reopening the workspace']
+      );
     }
   }
 

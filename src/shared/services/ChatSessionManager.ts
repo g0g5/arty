@@ -5,9 +5,10 @@
  */
 
 import type { ChatSession, ChatMessage, ProviderProfile, ToolCall, ToolDefinition } from '../types/models';
-import type { ExecutionContext } from '../types/services';
+import type { ExecutionContext, SimplifiedExecutionContext } from '../types/services';
 import { llmService } from './LLMService';
 import { toolExecutionService } from './ToolExecutionService';
+import { documentService } from './DocumentService';
 
 export type ChatSessionEvent = 
   | { type: 'message_added'; message: ChatMessage }
@@ -136,9 +137,9 @@ export class ChatSessionManager {
     };
     this.addMessage(sessionId, userMessage);
 
-    // Get tools if enabled
+    // Get tools if enabled (use simplified tools by default)
     const tools = session.toolsEnabled 
-      ? toolExecutionService.getAvailableTools() 
+      ? toolExecutionService.getAvailableTools(true) 
       : undefined;
 
     // Process assistant response
@@ -243,14 +244,32 @@ export class ChatSessionManager {
 
     const updatedToolCalls: ToolCall[] = [];
 
+    // Create simplified execution context for new tools
+    const simplifiedContext: SimplifiedExecutionContext = {
+      documentService: documentService,
+      workspace: executionContext.workspace
+    };
+
     // Execute all tool calls
     for (const toolCall of toolCalls) {
       try {
-        const result = await toolExecutionService.executeTool(
-          toolCall.name,
-          toolCall.arguments,
-          executionContext
-        );
+        // Try simplified tools first, fall back to legacy tools
+        let result;
+        const isSimplifiedTool = ['read', 'write', 'read_workspace_file', 'grep', 'replace', 'ls'].includes(toolCall.name);
+        
+        if (isSimplifiedTool) {
+          result = await toolExecutionService.executeSimplifiedTool(
+            toolCall.name,
+            toolCall.arguments,
+            simplifiedContext
+          );
+        } else {
+          result = await toolExecutionService.executeTool(
+            toolCall.name,
+            toolCall.arguments,
+            executionContext
+          );
+        }
 
         updatedToolCalls.push({
           ...toolCall,

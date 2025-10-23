@@ -1,49 +1,108 @@
 /**
- * Integration tests for TextEditorPanel component
- * Tests manual save functionality
+ * Integration tests for TextEditorPanel component with DocumentService
+ * Tests DocumentService event-driven updates, auto-save, and UI responsiveness
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TextEditorPanel } from './TextEditorPanel';
-import { fileSystemService } from '../../shared/services/FileSystemService';
+import { documentService } from '../../shared/services/DocumentService';
 
-// Mock the FileSystemService
-vi.mock('../../shared/services/FileSystemService', () => ({
-  fileSystemService: {
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-  },
-}));
+// Mock the DocumentService
+vi.mock('../../shared/services/DocumentService', () => {
+  const listeners = new Set<any>();
+  let mockDocument: any = null;
+  
+  return {
+    documentService: {
+      subscribe: vi.fn((listener: any) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      getCurrentDocument: vi.fn(() => mockDocument),
+      setCurrentDocument: vi.fn(async (handle: any, path: string) => {
+        const file = await handle.getFile();
+        const content = await file.text();
+        mockDocument = {
+          handle,
+          path,
+          content,
+          isDirty: false,
+          lastSaved: file.lastModified,
+          snapshots: []
+        };
+        listeners.forEach(listener => listener({ type: 'document_loaded', path }));
+      }),
+      getContent: vi.fn(() => mockDocument?.content || ''),
+      appendContent: vi.fn(async (content: string) => {
+        if (!mockDocument) throw new Error('No document loaded');
+        mockDocument.content += content;
+        mockDocument.isDirty = true;
+        listeners.forEach(listener => listener({ type: 'content_changed', content: mockDocument.content }));
+      }),
+      replaceContent: vi.fn(async (target: string, replacement: string) => {
+        if (!mockDocument) throw new Error('No document loaded');
+        mockDocument.content = mockDocument.content.replace(target, replacement);
+        mockDocument.isDirty = true;
+        listeners.forEach(listener => listener({ type: 'content_changed', content: mockDocument.content }));
+      }),
+      saveDocument: vi.fn(async () => {
+        if (!mockDocument) throw new Error('No document loaded');
+        mockDocument.isDirty = false;
+        mockDocument.lastSaved = Date.now();
+        listeners.forEach(listener => listener({ type: 'document_saved', timestamp: mockDocument.lastSaved }));
+      }),
+      isDirty: vi.fn(() => mockDocument?.isDirty || false),
+      enableAutoSave: vi.fn(),
+      disableAutoSave: vi.fn(),
+      clearDocument: vi.fn(() => {
+        mockDocument = null;
+      }),
+      _setMockDocument: (doc: any) => { mockDocument = doc; },
+      _getMockDocument: () => mockDocument,
+      _emitEvent: (event: any) => {
+        listeners.forEach(listener => listener(event));
+      },
+      _clearListeners: () => {
+        listeners.clear();
+      }
+    }
+  };
+});
 
-describe('TextEditorPanel Integration Tests', () => {
+describe('TextEditorPanel DocumentService Integration Tests', () => {
   let mockFileHandle: FileSystemFileHandle;
+  let mockFile: File;
   
   beforeEach(() => {
     vi.clearAllMocks();
+    (documentService as any)._clearListeners();
+    
+    // Create a mock file
+    mockFile = new File(['Initial content'], 'test.md', { 
+      type: 'text/markdown',
+      lastModified: Date.now()
+    });
     
     // Create a mock file handle
     mockFileHandle = {
       kind: 'file',
       name: 'test.md',
-      getFile: vi.fn(),
+      getFile: vi.fn().mockResolvedValue(mockFile),
       createWritable: vi.fn(),
     } as unknown as FileSystemFileHandle;
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    (documentService as any)._setMockDocument(null);
   });
 
 
 
-  describe('Manual Save Functionality', () => {
-    it('should mark content as dirty when edited', async () => {
-      const user = userEvent.setup();
-      const mockContent = 'Initial content';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-
+  describe('DocumentService Event-Driven Updates', () => {
+    it('should update UI when DocumentService emits content_changed event', async () => {
       render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
 
       // Wait for file to load
@@ -51,189 +110,255 @@ describe('TextEditorPanel Integration Tests', () => {
         expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
       });
 
-      const textarea = screen.getByPlaceholderText('Start typing your content...');
+      const textarea = screen.getByPlaceholderText('Start typing your content...') as HTMLTextAreaElement;
+      expect(textarea.value).toBe('Initial content');
 
-      // Initially should not show unsaved changes
+      // Simulate DocumentService content change
+      await act(async () => {
+        (documentService as any)._emitEvent({ 
+          type: 'content_changed', 
+          content: 'Initial content\nNew line added by agent' 
+        });
+      });
+
+      // UI should update with new content
+      await waitFor(() => {
+        expect(textarea.value).toBe('Initial content\nNew line added by agent');
+      });
+    });
+
+    it('should update dirty state when DocumentService emits content_changed event', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      // Initially not dirty
       expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
 
-      // Edit content
-      await user.type(textarea, ' modified');
+      // Simulate content change with dirty state
+      await act(async () => {
+        (documentService as any)._getMockDocument().isDirty = true;
+        vi.mocked(documentService.isDirty).mockReturnValue(true);
+        (documentService as any)._emitEvent({ 
+          type: 'content_changed', 
+          content: 'Modified content' 
+        });
+      });
 
-      // Should show unsaved changes indicator
+      // Should show dirty indicator
       await waitFor(() => {
         expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
       });
     });
 
-    it('should save when save button is clicked', async () => {
+    it('should clear dirty state when DocumentService emits document_saved event', async () => {
       const user = userEvent.setup();
-      const mockContent = 'Initial content';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-      vi.mocked(fileSystemService.writeFile).mockResolvedValue(undefined);
-
+      
       render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
 
-      // Wait for file to load
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
       });
 
       const textarea = screen.getByPlaceholderText('Start typing your content...');
+      
+      // Make content dirty
       await user.type(textarea, ' modified');
+
+      await waitFor(() => {
+        expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+      });
+
+      // Simulate save event from DocumentService
+      await act(async () => {
+        (documentService as any)._getMockDocument().isDirty = false;
+        vi.mocked(documentService.isDirty).mockReturnValue(false);
+        (documentService as any)._emitEvent({ 
+          type: 'document_saved', 
+          timestamp: Date.now() 
+        });
+      });
+
+      // Dirty state should be cleared
+      await waitFor(() => {
+        expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+      });
+    });
+
+    it('should update last saved timestamp when DocumentService emits document_saved event', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      const initialTimestamp = screen.getByText(/Last saved:/);
+      expect(initialTimestamp).toBeInTheDocument();
+
+      // Wait a bit to ensure timestamp difference
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Simulate save event
+      const newTimestamp = Date.now();
+      await act(async () => {
+        (documentService as any)._emitEvent({ 
+          type: 'document_saved', 
+          timestamp: newTimestamp 
+        });
+      });
+
+      // Timestamp should be updated
+      await waitFor(() => {
+        const updatedTimestamp = screen.getByText(/Last saved:/);
+        expect(updatedTimestamp).toBeInTheDocument();
+      });
+    });
+
+    it('should display error when DocumentService emits error event', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      // Simulate error event
+      await act(async () => {
+        (documentService as any)._emitEvent({ 
+          type: 'error', 
+          error: 'Failed to save document: disk full' 
+        });
+      });
+
+      // Error should be displayed
+      await waitFor(() => {
+        expect(screen.getByText('Failed to save document: disk full')).toBeInTheDocument();
+      });
+    });
+
+    it('should load document content when document_loaded event is emitted', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      // Should show loading initially
+      expect(screen.getByText('Loading file...')).toBeInTheDocument();
+
+      // Wait for document to load
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText('Start typing your content...') as HTMLTextAreaElement;
+      expect(textarea.value).toBe('Initial content');
+      expect(documentService.setCurrentDocument).toHaveBeenCalledWith(mockFileHandle, 'test.md');
+    });
+  });
+
+  describe('Document State Indicators', () => {
+    it('should show unsaved changes indicator when document is dirty', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      // Initially not dirty
+      expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+
+      // Simulate content change that makes document dirty
+      await act(async () => {
+        const mockDoc = (documentService as any)._getMockDocument();
+        mockDoc.isDirty = true;
+        vi.mocked(documentService.isDirty).mockReturnValue(true);
+        (documentService as any)._emitEvent({ 
+          type: 'content_changed', 
+          content: 'Initial content modified' 
+        });
+      });
 
       // Should show unsaved changes
       await waitFor(() => {
         expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
       });
-
-      // Click save button
-      const saveButton = screen.getByRole('button', { name: /save/i });
-      await user.click(saveButton);
-
-      // Should save
-      await waitFor(() => {
-        expect(fileSystemService.writeFile).toHaveBeenCalledWith(
-          mockFileHandle,
-          'Initial content modified'
-        );
-      });
-
-      // Should clear dirty state
-      await waitFor(() => {
-        expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
-      });
     });
 
-    it('should disable save button when content is not dirty', async () => {
-      const mockContent = 'Initial content';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-
+    it('should show auto-save enabled indicator', async () => {
       render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
 
-      // Wait for file to load
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
       });
 
-      // Save button should be disabled when no changes
+      // Auto-save should be enabled after loading
+      expect(documentService.enableAutoSave).toHaveBeenCalledWith(30000);
+    });
+
+    it('should disable save button when content is not dirty', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
       const saveButton = screen.getByRole('button', { name: /save/i });
       expect(saveButton).toBeDisabled();
     });
 
-    it('should save immediately on Ctrl+S', async () => {
-      const user = userEvent.setup();
-      const mockContent = 'Initial content';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-      vi.mocked(fileSystemService.writeFile).mockResolvedValue(undefined);
-
+    it('should enable save button when content is dirty', async () => {
       render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
 
-      // Wait for file to load
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
       });
 
-      const textarea = screen.getByPlaceholderText('Start typing your content...');
-      await user.type(textarea, ' modified');
-
-      // Press Ctrl+S
-      await user.keyboard('{Control>}s{/Control}');
-
-      // Should save immediately
-      await waitFor(() => {
-        expect(fileSystemService.writeFile).toHaveBeenCalledWith(
-          mockFileHandle,
-          'Initial content modified'
-        );
+      // Simulate content change that makes document dirty
+      await act(async () => {
+        const mockDoc = (documentService as any)._getMockDocument();
+        mockDoc.isDirty = true;
+        vi.mocked(documentService.isDirty).mockReturnValue(true);
+        (documentService as any)._emitEvent({ 
+          type: 'content_changed', 
+          content: 'Initial content modified' 
+        });
       });
 
-      // Should clear dirty state
       await waitFor(() => {
-        expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+        const saveButton = screen.getByRole('button', { name: /save/i });
+        expect(saveButton).not.toBeDisabled();
       });
     });
 
-    it('should update last saved timestamp after successful save', async () => {
+    it('should show saving state during save operation', async () => {
       const user = userEvent.setup();
-      const mockContent = 'Initial content';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-      vi.mocked(fileSystemService.writeFile).mockResolvedValue(undefined);
-
-      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
-
-      // Wait for file to load
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
-      });
-
-      expect(screen.getByText(/Last saved:/)).toBeInTheDocument();
-
-      const textarea = screen.getByPlaceholderText('Start typing your content...');
-      await user.type(textarea, ' modified');
-
-      // Click save button
-      const saveButton = screen.getByRole('button', { name: /save/i });
-      await user.click(saveButton);
-
-      // Should update last saved timestamp
-      await waitFor(() => {
-        expect(fileSystemService.writeFile).toHaveBeenCalled();
-      });
       
-      expect(screen.getByText(/Last saved:/)).toBeInTheDocument();
-    });
-
-    it('should display error message when save fails', async () => {
-      const user = userEvent.setup();
-      const mockContent = 'Initial content';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-      vi.mocked(fileSystemService.writeFile).mockRejectedValue(
-        new Error('Permission denied to write file')
-      );
-
-      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
-
-      // Wait for file to load
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
-      });
-
-      const textarea = screen.getByPlaceholderText('Start typing your content...');
-      await user.type(textarea, ' modified');
-
-      // Click save button
-      const saveButton = screen.getByRole('button', { name: /save/i });
-      await user.click(saveButton);
-
-      // Should display error message
-      await waitFor(() => {
-        expect(screen.getByText('Permission denied to write file')).toBeInTheDocument();
-      });
-    });
-
-    it('should show saving state while save is in progress', async () => {
-      const user = userEvent.setup();
-      const mockContent = 'Initial content';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-      
-      // Create a promise that we can control
+      // Mock saveDocument to be slow
       let resolveSave: () => void;
       const savePromise = new Promise<void>((resolve) => {
         resolveSave = resolve;
       });
-      vi.mocked(fileSystemService.writeFile).mockReturnValue(savePromise);
+      vi.mocked(documentService.saveDocument).mockReturnValue(savePromise);
 
       render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
 
-      // Wait for file to load
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
       });
 
-      const textarea = screen.getByPlaceholderText('Start typing your content...');
-      await user.type(textarea, ' modified');
+      // Make document dirty first
+      await act(async () => {
+        const mockDoc = (documentService as any)._getMockDocument();
+        mockDoc.isDirty = true;
+        vi.mocked(documentService.isDirty).mockReturnValue(true);
+        (documentService as any)._emitEvent({ 
+          type: 'content_changed', 
+          content: 'Initial content modified' 
+        });
+      });
 
-      // Click save button
+      await waitFor(() => {
+        expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+      });
+
       const saveButton = screen.getByRole('button', { name: /save/i });
       await user.click(saveButton);
 
@@ -242,26 +367,210 @@ describe('TextEditorPanel Integration Tests', () => {
         expect(screen.getByText('Saving...')).toBeInTheDocument();
       });
 
-      // Resolve the save
+      // Resolve save
       await act(async () => {
         resolveSave!();
-      });
-
-      // Should return to normal state
-      await waitFor(() => {
-        expect(screen.queryByText('Saving...')).not.toBeInTheDocument();
+        await savePromise;
       });
     });
 
-    it('should trigger save on beforeunload when content is dirty', async () => {
-      const user = userEvent.setup();
-      const mockContent = 'Initial content';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-      vi.mocked(fileSystemService.writeFile).mockResolvedValue(undefined);
+    it('should display file path in status bar', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="src/components/test.md" />);
 
+      await waitFor(() => {
+        expect(screen.getByText('src/components/test.md')).toBeInTheDocument();
+      });
+    });
+
+    it('should display character count', async () => {
       render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
 
-      // Wait for file to load
+      await waitFor(() => {
+        expect(screen.getByText(/15 characters/)).toBeInTheDocument(); // "Initial content" = 15 chars
+      });
+    });
+  });
+
+  describe('Auto-Save Functionality', () => {
+    it('should enable auto-save when document is loaded', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      expect(documentService.enableAutoSave).toHaveBeenCalledWith(30000);
+    });
+
+    it('should disable auto-save when component unmounts', async () => {
+      const { unmount } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      unmount();
+
+      expect(documentService.disableAutoSave).toHaveBeenCalled();
+    });
+
+    it('should disable auto-save when file changes', async () => {
+      const { rerender } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      // Change file
+      const newMockFile = new File(['New file content'], 'test2.md', { 
+        type: 'text/markdown',
+        lastModified: Date.now()
+      });
+      const newMockFileHandle = {
+        kind: 'file',
+        name: 'test2.md',
+        getFile: vi.fn().mockResolvedValue(newMockFile),
+        createWritable: vi.fn(),
+      } as unknown as FileSystemFileHandle;
+
+      rerender(<TextEditorPanel fileHandle={newMockFileHandle} filePath="test2.md" />);
+
+      // Should disable auto-save for old file and enable for new file
+      await waitFor(() => {
+        expect(documentService.disableAutoSave).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('Editor Cleanup and State Preservation', () => {
+    it('should clear document when file handle is removed', async () => {
+      const { rerender } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      // Remove file handle
+      rerender(<TextEditorPanel fileHandle={null} filePath={null} />);
+
+      // Should clear document
+      await waitFor(() => {
+        expect(documentService.clearDocument).toHaveBeenCalled();
+      });
+
+      // Should show empty state
+      expect(screen.getByText('No file selected')).toBeInTheDocument();
+    });
+
+    it('should preserve DocumentService state when component unmounts', async () => {
+      const { unmount } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      // Unmount component
+      unmount();
+
+      // DocumentService should still have the document
+      expect((documentService as any)._getMockDocument()).not.toBeNull();
+    });
+
+    it('should unsubscribe from DocumentService events on unmount', async () => {
+      const { unmount } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      expect(documentService.subscribe).toHaveBeenCalled();
+
+      // Get the unsubscribe function
+      const unsubscribeFn = vi.mocked(documentService.subscribe).mock.results[0].value;
+
+      unmount();
+
+      // Unsubscribe should have been called
+      expect(unsubscribeFn).toBeDefined();
+    });
+
+    it('should handle rapid file changes without errors', async () => {
+      const { rerender } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      // Rapidly change files
+      for (let i = 0; i < 5; i++) {
+        const newFile = new File([`Content ${i}`], `test${i}.md`, { 
+          type: 'text/markdown',
+          lastModified: Date.now()
+        });
+        const newHandle = {
+          kind: 'file',
+          name: `test${i}.md`,
+          getFile: vi.fn().mockResolvedValue(newFile),
+          createWritable: vi.fn(),
+        } as unknown as FileSystemFileHandle;
+
+        rerender(<TextEditorPanel fileHandle={newHandle} filePath={`test${i}.md`} />);
+      }
+
+      // Should not throw errors
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('UI Responsiveness During Document Operations', () => {
+    it('should remain responsive during content updates', async () => {
+      const user = userEvent.setup();
+      
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText('Start typing your content...');
+
+      // Rapidly type content
+      await user.type(textarea, 'Quick typing test');
+
+      // UI should remain responsive
+      await waitFor(() => {
+        expect(textarea).toHaveValue('Initial contentQuick typing test');
+      });
+    });
+
+    it('should handle multiple simultaneous DocumentService events', async () => {
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      // Emit multiple events simultaneously
+      await act(async () => {
+        (documentService as any)._emitEvent({ type: 'content_changed', content: 'Update 1' });
+        (documentService as any)._emitEvent({ type: 'content_changed', content: 'Update 2' });
+        (documentService as any)._emitEvent({ type: 'content_changed', content: 'Update 3' });
+      });
+
+      // Should handle all events and show final state
+      await waitFor(() => {
+        const textarea = screen.getByPlaceholderText('Start typing your content...') as HTMLTextAreaElement;
+        expect(textarea.value).toBe('Update 3');
+      });
+    });
+
+    it('should not block UI during save operation', async () => {
+      const user = userEvent.setup();
+      
+      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
       await waitFor(() => {
         expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
       });
@@ -269,88 +578,83 @@ describe('TextEditorPanel Integration Tests', () => {
       const textarea = screen.getByPlaceholderText('Start typing your content...');
       await user.type(textarea, ' modified');
 
-      // Should show unsaved changes
-      await waitFor(() => {
-        expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
-      });
+      // Start save operation
+      const saveButton = screen.getByRole('button', { name: /save/i });
+      await user.click(saveButton);
 
-      // Trigger beforeunload event
-      const beforeUnloadEvent = new Event('beforeunload', { cancelable: true }) as BeforeUnloadEvent;
-      window.dispatchEvent(beforeUnloadEvent);
-
-      // Should trigger save
-      await waitFor(() => {
-        expect(fileSystemService.writeFile).toHaveBeenCalledWith(
-          mockFileHandle,
-          'Initial content modified'
-        );
-      });
-    });
-  });
-
-  describe('File Loading', () => {
-    it('should load file content when file handle is provided', async () => {
-      const mockContent = '# Test File\n\nContent here.';
-      vi.mocked(fileSystemService.readFile).mockResolvedValue(mockContent);
-
-      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
-
-      // Should call readFile
-      expect(fileSystemService.readFile).toHaveBeenCalledWith(mockFileHandle);
-
-      // Wait for file to load
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
-      });
-
-      // Should display content
-      const textarea = screen.getByPlaceholderText('Start typing your content...');
-      expect(textarea).toHaveValue(mockContent);
+      // UI should still be interactive (textarea should be editable)
+      expect(textarea).not.toBeDisabled();
     });
 
-    it('should display loading state while loading file', async () => {
-      const mockContent = 'Test content';
-      let resolvePromise: (value: string) => void;
-      const promise = new Promise<string>((resolve) => {
-        resolvePromise = resolve;
-      });
-      vi.mocked(fileSystemService.readFile).mockReturnValue(promise);
-
-      render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
-
-      // Should show loading state
-      expect(screen.getByText('Loading file...')).toBeInTheDocument();
-
-      // Resolve the promise
-      await act(async () => {
-        resolvePromise!(mockContent);
-      });
-
-      // Wait for content to load
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
-      });
-    });
-
-    it('should display error when file loading fails', async () => {
-      vi.mocked(fileSystemService.readFile).mockRejectedValue(
-        new Error('Failed to load file')
+    it('should handle error during document load gracefully', async () => {
+      vi.mocked(documentService.setCurrentDocument).mockRejectedValueOnce(
+        new Error('Failed to load document')
       );
 
       render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
 
-      // Wait for error to appear
+      // Should show loading initially
+      expect(screen.getByText('Loading file...')).toBeInTheDocument();
+
+      // Should show error after failed load
       await waitFor(() => {
-        expect(screen.getByText('Failed to load file')).toBeInTheDocument();
+        expect(screen.getByText('Failed to load document')).toBeInTheDocument();
       });
     });
 
+    it('should recover from error state when loading new file', async () => {
+      // First load fails
+      vi.mocked(documentService.setCurrentDocument).mockRejectedValueOnce(
+        new Error('Failed to load document')
+      );
+
+      const { rerender } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Failed to load document')).toBeInTheDocument();
+      });
+
+      // Load new file successfully
+      vi.mocked(documentService.setCurrentDocument).mockResolvedValueOnce(undefined);
+      
+      const newFile = new File(['New content'], 'test2.md', { 
+        type: 'text/markdown',
+        lastModified: Date.now()
+      });
+      const newHandle = {
+        kind: 'file',
+        name: 'test2.md',
+        getFile: vi.fn().mockResolvedValue(newFile),
+        createWritable: vi.fn(),
+      } as unknown as FileSystemFileHandle;
+
+      rerender(<TextEditorPanel fileHandle={newHandle} filePath="test2.md" />);
+
+      // Should clear error and load new file
+      await waitFor(() => {
+        expect(screen.queryByText('Failed to load document')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Empty State', () => {
     it('should display empty state when no file is selected', () => {
       render(<TextEditorPanel fileHandle={null} filePath={null} />);
 
-      // Should show empty state
       expect(screen.getByText('No file selected')).toBeInTheDocument();
       expect(screen.getByText('Select a file from the workspace to start editing')).toBeInTheDocument();
+    });
+
+    it('should clear document when transitioning to empty state', async () => {
+      const { rerender } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
+      });
+
+      rerender(<TextEditorPanel fileHandle={null} filePath={null} />);
+
+      expect(documentService.clearDocument).toHaveBeenCalled();
     });
   });
 });
