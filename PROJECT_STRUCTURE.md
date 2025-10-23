@@ -72,7 +72,7 @@ pnpm dev
 pnpm build
 
 # Lint code
-npm run lint
+pnpm lint
 
 # unit test
 pnpm vitest --run "path_to_test"

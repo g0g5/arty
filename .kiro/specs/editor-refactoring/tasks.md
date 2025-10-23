@@ -96,7 +96,12 @@
   - Create executeLs method (no parameters, returns workspace file tree)
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-- [-] 2.4 Write unit tests for simplified tools
+- [x] 2.4 Write unit tests for simplified tools
+
+
+
+
+
 
 
 
@@ -107,7 +112,9 @@
   - Verify consistent response formats across all tools
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 3. Implement Chat History Management System
+- [-] 3. Implement Chat History Management System
+
+
   - Create ChatHistoryService for session archival and restoration
   - Implement title generation from first user message with 50-character truncation
   - Add persistent storage for archived chat sessions

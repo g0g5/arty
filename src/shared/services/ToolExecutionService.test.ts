@@ -6,7 +6,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolExecutionService } from './ToolExecutionService';
 import { FileSystemService } from './FileSystemService';
-import type { ExecutionContext } from '../types/services';
+import { DocumentService } from './DocumentService';
+import type { ExecutionContext, SimplifiedExecutionContext } from '../types/services';
 
 // Mock FileSystemService
 vi.mock('./FileSystemService', () => {
@@ -24,9 +25,27 @@ vi.mock('./FileSystemService', () => {
   };
 });
 
+// Mock DocumentService
+vi.mock('./DocumentService', () => {
+  const mockDocumentService = {
+    getContent: vi.fn(),
+    appendContent: vi.fn(),
+    replaceContent: vi.fn(),
+    searchContent: vi.fn(),
+    getCurrentDocument: vi.fn(),
+  };
+
+  return {
+    DocumentService: {
+      getInstance: vi.fn(() => mockDocumentService),
+    },
+  };
+});
+
 describe('ToolExecutionService', () => {
   let service: ToolExecutionService;
   let mockFileSystemService: any;
+  let mockDocumentService: any;
   let mockCurrentFile: FileSystemFileHandle;
   let mockWorkspace: FileSystemDirectoryHandle;
 
@@ -34,6 +53,7 @@ describe('ToolExecutionService', () => {
     vi.clearAllMocks();
     service = ToolExecutionService.getInstance();
     mockFileSystemService = FileSystemService.getInstance();
+    mockDocumentService = DocumentService.getInstance();
 
     // Create mock file handles
     mockCurrentFile = {
@@ -618,6 +638,512 @@ describe('ToolExecutionService', () => {
       await expect(
         service.executeTool('grep_search', { pattern: 'hello', path: 'nonexistent' }, context)
       ).rejects.toThrow('Directory not found: nonexistent');
+    });
+  });
+
+  // ========================================
+  // SIMPLIFIED TOOLS TESTS
+  // ========================================
+
+  describe('Simplified Tools', () => {
+    let simplifiedContext: SimplifiedExecutionContext;
+
+    beforeEach(() => {
+      simplifiedContext = {
+        documentService: mockDocumentService,
+        workspace: mockWorkspace,
+      };
+    });
+
+    describe('read tool', () => {
+      it('should return current document content', async () => {
+        mockDocumentService.getContent.mockReturnValue('Hello, World!');
+
+        const result = await service.executeSimplifiedTool('read', {}, simplifiedContext);
+
+        expect(result).toBe('Hello, World!');
+        expect(mockDocumentService.getContent).toHaveBeenCalledTimes(1);
+      });
+
+      it('should throw error when no document is loaded', async () => {
+        mockDocumentService.getContent.mockImplementation(() => {
+          throw new Error('No document is currently loaded');
+        });
+
+        await expect(
+          service.executeSimplifiedTool('read', {}, simplifiedContext)
+        ).rejects.toThrow('Failed to read current document');
+      });
+
+      it('should work with empty document', async () => {
+        mockDocumentService.getContent.mockReturnValue('');
+
+        const result = await service.executeSimplifiedTool('read', {}, simplifiedContext);
+
+        expect(result).toBe('');
+      });
+
+      it('should work with large document content', async () => {
+        const largeContent = 'x'.repeat(100000);
+        mockDocumentService.getContent.mockReturnValue(largeContent);
+
+        const result = await service.executeSimplifiedTool('read', {}, simplifiedContext);
+
+        expect(result).toBe(largeContent);
+        expect(result.length).toBe(100000);
+      });
+    });
+
+    describe('write tool', () => {
+      it('should append content to current document', async () => {
+        mockDocumentService.appendContent.mockResolvedValue(undefined);
+
+        const result = await service.executeSimplifiedTool('write', {
+          content: '\nNew line of text'
+        }, simplifiedContext);
+
+        expect(result).toEqual({
+          success: true,
+          message: 'Appended 17 characters to current document'
+        });
+        expect(mockDocumentService.appendContent).toHaveBeenCalledWith('\nNew line of text');
+      });
+
+      it('should throw error when content parameter is missing', async () => {
+        await expect(
+          service.executeSimplifiedTool('write', {}, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: content');
+      });
+
+      it('should throw error when content is not a string', async () => {
+        await expect(
+          service.executeSimplifiedTool('write', { content: 123 }, simplifiedContext)
+        ).rejects.toThrow('Content parameter must be a string');
+      });
+
+      it('should throw error when no document is loaded', async () => {
+        mockDocumentService.appendContent.mockRejectedValue(
+          new Error('No document is currently loaded')
+        );
+
+        await expect(
+          service.executeSimplifiedTool('write', { content: 'test' }, simplifiedContext)
+        ).rejects.toThrow('Failed to write to current document');
+      });
+
+      it('should handle empty content string', async () => {
+        mockDocumentService.appendContent.mockResolvedValue(undefined);
+
+        const result = await service.executeSimplifiedTool('write', {
+          content: ''
+        }, simplifiedContext);
+
+        expect(result).toEqual({
+          success: true,
+          message: 'Appended 0 characters to current document'
+        });
+      });
+
+      it('should handle multiline content', async () => {
+        mockDocumentService.appendContent.mockResolvedValue(undefined);
+        const multilineContent = 'Line 1\nLine 2\nLine 3';
+
+        const result = await service.executeSimplifiedTool('write', {
+          content: multilineContent
+        }, simplifiedContext);
+
+        expect(result.success).toBe(true);
+        expect(mockDocumentService.appendContent).toHaveBeenCalledWith(multilineContent);
+      });
+    });
+
+    describe('read_workspace_file tool', () => {
+      it('should read workspace file by path', async () => {
+        const mockFile = { kind: 'file', name: 'config.json' } as FileSystemFileHandle;
+        mockFileSystemService.findFile.mockResolvedValue(mockFile);
+        mockFileSystemService.readFile.mockResolvedValue('{"key": "value"}');
+
+        const result = await service.executeSimplifiedTool('read_workspace_file', {
+          path: 'config.json'
+        }, simplifiedContext);
+
+        expect(result).toBe('{"key": "value"}');
+        expect(mockFileSystemService.findFile).toHaveBeenCalledWith(mockWorkspace, 'config.json');
+        expect(mockFileSystemService.readFile).toHaveBeenCalledWith(mockFile);
+      });
+
+      it('should throw error when path parameter is missing', async () => {
+        await expect(
+          service.executeSimplifiedTool('read_workspace_file', {}, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: path');
+      });
+
+      it('should throw error when path is not a string', async () => {
+        await expect(
+          service.executeSimplifiedTool('read_workspace_file', { path: 123 }, simplifiedContext)
+        ).rejects.toThrow('Path parameter must be a string');
+      });
+
+      it('should throw error when no workspace is open', async () => {
+        const noWorkspaceContext: SimplifiedExecutionContext = {
+          documentService: mockDocumentService,
+          workspace: null,
+        };
+
+        await expect(
+          service.executeSimplifiedTool('read_workspace_file', { path: 'test.txt' }, noWorkspaceContext)
+        ).rejects.toThrow('No workspace is currently open');
+      });
+
+      it('should throw error when file not found', async () => {
+        mockFileSystemService.findFile.mockRejectedValue(new Error('File not found'));
+
+        await expect(
+          service.executeSimplifiedTool('read_workspace_file', {
+            path: 'nonexistent.txt'
+          }, simplifiedContext)
+        ).rejects.toThrow("Failed to read file 'nonexistent.txt'");
+      });
+
+      it('should handle nested file paths', async () => {
+        const mockFile = { kind: 'file', name: 'component.tsx' } as FileSystemFileHandle;
+        mockFileSystemService.findFile.mockResolvedValue(mockFile);
+        mockFileSystemService.readFile.mockResolvedValue('export const Component = () => {}');
+
+        const result = await service.executeSimplifiedTool('read_workspace_file', {
+          path: 'src/components/component.tsx'
+        }, simplifiedContext);
+
+        expect(result).toBe('export const Component = () => {}');
+        expect(mockFileSystemService.findFile).toHaveBeenCalledWith(
+          mockWorkspace,
+          'src/components/component.tsx'
+        );
+      });
+    });
+
+    describe('grep tool', () => {
+      it('should search current document with regex pattern', async () => {
+        const mockResults = [
+          { line: 1, column: 1, match: 'hello', context: 'hello world' },
+          { line: 3, column: 5, match: 'hello', context: 'say hello again' }
+        ];
+        mockDocumentService.searchContent.mockReturnValue(mockResults);
+
+        const result = await service.executeSimplifiedTool('grep', {
+          pattern: 'hello'
+        }, simplifiedContext);
+
+        expect(result).toEqual(mockResults);
+        expect(mockDocumentService.searchContent).toHaveBeenCalledWith('hello');
+      });
+
+      it('should throw error when pattern parameter is missing', async () => {
+        await expect(
+          service.executeSimplifiedTool('grep', {}, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: pattern');
+      });
+
+      it('should throw error when pattern is not a string', async () => {
+        await expect(
+          service.executeSimplifiedTool('grep', { pattern: 123 }, simplifiedContext)
+        ).rejects.toThrow('Pattern parameter must be a string');
+      });
+
+      it('should throw error when no document is loaded', async () => {
+        mockDocumentService.searchContent.mockImplementation(() => {
+          throw new Error('No document is currently loaded');
+        });
+
+        await expect(
+          service.executeSimplifiedTool('grep', { pattern: 'test' }, simplifiedContext)
+        ).rejects.toThrow('Failed to search current document');
+      });
+
+      it('should return empty array when no matches found', async () => {
+        mockDocumentService.searchContent.mockReturnValue([]);
+
+        const result = await service.executeSimplifiedTool('grep', {
+          pattern: 'nonexistent'
+        }, simplifiedContext);
+
+        expect(result).toEqual([]);
+      });
+
+      it('should handle complex regex patterns', async () => {
+        const mockResults = [
+          { line: 2, column: 10, match: 'function test()', context: 'function test() {' }
+        ];
+        mockDocumentService.searchContent.mockReturnValue(mockResults);
+
+        const result = await service.executeSimplifiedTool('grep', {
+          pattern: 'function\\s+\\w+\\(\\)'
+        }, simplifiedContext);
+
+        expect(result).toEqual(mockResults);
+        expect(mockDocumentService.searchContent).toHaveBeenCalledWith('function\\s+\\w+\\(\\)');
+      });
+
+      it('should handle invalid regex patterns gracefully', async () => {
+        mockDocumentService.searchContent.mockImplementation(() => {
+          throw new Error('Invalid regex pattern');
+        });
+
+        await expect(
+          service.executeSimplifiedTool('grep', { pattern: '[invalid(' }, simplifiedContext)
+        ).rejects.toThrow('Failed to search current document');
+      });
+    });
+
+    describe('replace tool', () => {
+      it('should replace target content with new content', async () => {
+        mockDocumentService.replaceContent.mockResolvedValue(undefined);
+
+        const result = await service.executeSimplifiedTool('replace', {
+          target: 'old text',
+          newContent: 'new text'
+        }, simplifiedContext);
+
+        expect(result).toEqual({
+          success: true,
+          message: 'Successfully replaced content in current document'
+        });
+        expect(mockDocumentService.replaceContent).toHaveBeenCalledWith('old text', 'new text');
+      });
+
+      it('should throw error when target parameter is missing', async () => {
+        await expect(
+          service.executeSimplifiedTool('replace', { newContent: 'test' }, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: target');
+      });
+
+      it('should throw error when newContent parameter is missing', async () => {
+        await expect(
+          service.executeSimplifiedTool('replace', { target: 'test' }, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: newContent');
+      });
+
+      it('should throw error when target is not a string', async () => {
+        await expect(
+          service.executeSimplifiedTool('replace', {
+            target: 123,
+            newContent: 'test'
+          }, simplifiedContext)
+        ).rejects.toThrow('Target and newContent parameters must be strings');
+      });
+
+      it('should throw error when newContent is not a string', async () => {
+        await expect(
+          service.executeSimplifiedTool('replace', {
+            target: 'test',
+            newContent: 456
+          }, simplifiedContext)
+        ).rejects.toThrow('Target and newContent parameters must be strings');
+      });
+
+      it('should throw error when no document is loaded', async () => {
+        mockDocumentService.replaceContent.mockRejectedValue(
+          new Error('No document is currently loaded')
+        );
+
+        await expect(
+          service.executeSimplifiedTool('replace', {
+            target: 'old',
+            newContent: 'new'
+          }, simplifiedContext)
+        ).rejects.toThrow('Failed to replace content');
+      });
+
+      it('should throw error when target not found', async () => {
+        mockDocumentService.replaceContent.mockRejectedValue(
+          new Error('Target content not found for replacement')
+        );
+
+        await expect(
+          service.executeSimplifiedTool('replace', {
+            target: 'nonexistent',
+            newContent: 'new'
+          }, simplifiedContext)
+        ).rejects.toThrow('Failed to replace content');
+      });
+
+      it('should handle empty strings', async () => {
+        mockDocumentService.replaceContent.mockResolvedValue(undefined);
+
+        const result = await service.executeSimplifiedTool('replace', {
+          target: 'text',
+          newContent: ''
+        }, simplifiedContext);
+
+        expect(result.success).toBe(true);
+        expect(mockDocumentService.replaceContent).toHaveBeenCalledWith('text', '');
+      });
+
+      it('should handle multiline replacements', async () => {
+        mockDocumentService.replaceContent.mockResolvedValue(undefined);
+        const multilineTarget = 'line1\nline2';
+        const multilineNew = 'newline1\nnewline2\nnewline3';
+
+        const result = await service.executeSimplifiedTool('replace', {
+          target: multilineTarget,
+          newContent: multilineNew
+        }, simplifiedContext);
+
+        expect(result.success).toBe(true);
+        expect(mockDocumentService.replaceContent).toHaveBeenCalledWith(
+          multilineTarget,
+          multilineNew
+        );
+      });
+    });
+
+    describe('ls tool', () => {
+      it('should return workspace file tree structure', async () => {
+        const mockTree = [
+          { name: 'file1.txt', type: 'file', path: 'file1.txt' },
+          {
+            name: 'src',
+            type: 'directory',
+            path: 'src',
+            children: [
+              { name: 'index.ts', type: 'file', path: 'src/index.ts' }
+            ]
+          }
+        ];
+        mockFileSystemService.getFileTree.mockResolvedValue(mockTree);
+
+        const result = await service.executeSimplifiedTool('ls', {}, simplifiedContext);
+
+        expect(result).toContain('📄 file1.txt');
+        expect(result).toContain('📁 src');
+        expect(result).toContain('📄 index.ts');
+        expect(mockFileSystemService.getFileTree).toHaveBeenCalledWith(mockWorkspace, '');
+      });
+
+      it('should throw error when no workspace is open', async () => {
+        const noWorkspaceContext: SimplifiedExecutionContext = {
+          documentService: mockDocumentService,
+          workspace: null,
+        };
+
+        await expect(
+          service.executeSimplifiedTool('ls', {}, noWorkspaceContext)
+        ).rejects.toThrow('No workspace is currently open');
+      });
+
+      it('should handle empty workspace', async () => {
+        mockFileSystemService.getFileTree.mockResolvedValue([]);
+
+        const result = await service.executeSimplifiedTool('ls', {}, simplifiedContext);
+
+        expect(result).toBe('');
+      });
+
+      it('should handle deeply nested directory structures', async () => {
+        const mockTree = [
+          {
+            name: 'src',
+            type: 'directory',
+            path: 'src',
+            children: [
+              {
+                name: 'components',
+                type: 'directory',
+                path: 'src/components',
+                children: [
+                  { name: 'Button.tsx', type: 'file', path: 'src/components/Button.tsx' }
+                ]
+              }
+            ]
+          }
+        ];
+        mockFileSystemService.getFileTree.mockResolvedValue(mockTree);
+
+        const result = await service.executeSimplifiedTool('ls', {}, simplifiedContext);
+
+        expect(result).toContain('📁 src');
+        expect(result).toContain('📁 components');
+        expect(result).toContain('📄 Button.tsx');
+      });
+
+      it('should handle file system errors gracefully', async () => {
+        mockFileSystemService.getFileTree.mockRejectedValue(
+          new Error('Permission denied')
+        );
+
+        await expect(
+          service.executeSimplifiedTool('ls', {}, simplifiedContext)
+        ).rejects.toThrow('Failed to list workspace files');
+      });
+    });
+
+    describe('executeSimplifiedTool - general behavior', () => {
+      it('should throw error for unknown simplified tool', async () => {
+        await expect(
+          service.executeSimplifiedTool('unknown_tool', {}, simplifiedContext)
+        ).rejects.toThrow('Unknown simplified tool: unknown_tool');
+      });
+
+      it('should validate required parameters for all tools', async () => {
+        // write tool
+        await expect(
+          service.executeSimplifiedTool('write', {}, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: content');
+
+        // read_workspace_file tool
+        await expect(
+          service.executeSimplifiedTool('read_workspace_file', {}, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: path');
+
+        // grep tool
+        await expect(
+          service.executeSimplifiedTool('grep', {}, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: pattern');
+
+        // replace tool
+        await expect(
+          service.executeSimplifiedTool('replace', { target: 'test' }, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: newContent');
+      });
+
+      it('should handle null and undefined arguments consistently', async () => {
+        await expect(
+          service.executeSimplifiedTool('write', { content: null }, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: content');
+
+        await expect(
+          service.executeSimplifiedTool('write', { content: undefined }, simplifiedContext)
+        ).rejects.toThrow('Missing required argument: content');
+      });
+    });
+
+    describe('executeTool - simplified tool routing', () => {
+      it('should route simplified tools through executeSimplifiedTool', async () => {
+        mockDocumentService.getContent.mockReturnValue('test content');
+
+        const context: ExecutionContext = {
+          currentFile: mockCurrentFile,
+          workspace: mockWorkspace,
+        };
+
+        const result = await service.executeTool('read', {}, context);
+
+        expect(result).toBe('test content');
+        expect(mockDocumentService.getContent).toHaveBeenCalled();
+      });
+
+      it('should create simplified context from execution context', async () => {
+        mockDocumentService.appendContent.mockResolvedValue(undefined);
+
+        const context: ExecutionContext = {
+          currentFile: mockCurrentFile,
+          workspace: mockWorkspace,
+        };
+
+        await service.executeTool('write', { content: 'test' }, context);
+
+        expect(mockDocumentService.appendContent).toHaveBeenCalledWith('test');
+      });
     });
   });
 });
