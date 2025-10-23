@@ -1,10 +1,12 @@
 /**
  * Text Editor Panel Component
  * Main panel for editing files with plain text support and manual save
+ * Refactored to use DocumentService for all document operations
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { fileSystemService } from '../../shared/services/FileSystemService';
+import { documentService } from '../../shared/services/DocumentService';
+import type { DocumentEvent } from '../../shared/types/services';
 
 interface TextEditorPanelProps {
   fileHandle: FileSystemFileHandle | null;
@@ -16,16 +18,59 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
   const [isDirty, setIsDirty] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  // Load file content when file handle changes
+  // Subscribe to DocumentService events
+  useEffect(() => {
+    const handleDocumentEvent = (event: DocumentEvent) => {
+      switch (event.type) {
+        case 'document_loaded':
+          setIsLoading(false);
+          setContent(documentService.getContent());
+          setIsDirty(false);
+          setError(null);
+          const docState = documentService.getCurrentDocument();
+          if (docState) {
+            setLastSaved(new Date(docState.lastSaved));
+          }
+          break;
+
+        case 'content_changed':
+          setContent(event.content);
+          setIsDirty(documentService.isDirty());
+          break;
+
+        case 'document_saved':
+          setIsDirty(false);
+          setIsSaving(false);
+          setIsAutoSaving(false);
+          setLastSaved(new Date(event.timestamp));
+          break;
+
+        case 'error':
+          setError(event.error);
+          setIsLoading(false);
+          setIsSaving(false);
+          setIsAutoSaving(false);
+          break;
+      }
+    };
+
+    const unsubscribe = documentService.subscribe(handleDocumentEvent);
+    return unsubscribe;
+  }, []);
+
+  // Load file when file handle changes
   useEffect(() => {
     const loadFile = async () => {
-      if (!fileHandle) {
+      if (!fileHandle || !filePath) {
         setContent('');
         setIsDirty(false);
         setError(null);
+        setLastSaved(null);
+        documentService.clearDocument();
         return;
       }
 
@@ -33,25 +78,28 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
       setError(null);
 
       try {
-        const fileContent = await fileSystemService.readFile(fileHandle);
-        setContent(fileContent);
-        setIsDirty(false);
-        setLastSaved(new Date());
+        await documentService.setCurrentDocument(fileHandle, filePath);
+        // Enable auto-save with 30 second interval
+        documentService.enableAutoSave(30000);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
         setError(errorMessage);
         console.error('Error loading file:', err);
-      } finally {
         setIsLoading(false);
       }
     };
 
     loadFile();
-  }, [fileHandle]);
+
+    // Cleanup: disable auto-save when component unmounts or file changes
+    return () => {
+      documentService.disableAutoSave();
+    };
+  }, [fileHandle, filePath]);
 
   // Manual save functionality
   const saveFile = useCallback(async () => {
-    if (!fileHandle || !isDirty) {
+    if (!isDirty) {
       return;
     }
 
@@ -59,22 +107,35 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
     setError(null);
 
     try {
-      await fileSystemService.writeFile(fileHandle, content);
-      setIsDirty(false);
-      setLastSaved(new Date());
+      await documentService.saveDocument();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save file';
       setError(errorMessage);
       console.error('Error saving file:', err);
-    } finally {
       setIsSaving(false);
     }
-  }, [fileHandle, content, isDirty]);
+  }, [isDirty]);
 
-  // Handle content changes
-  const handleContentChange = useCallback((newContent: string) => {
-    setContent(newContent);
-    setIsDirty(true);
+  // Handle content changes - update DocumentService
+  const handleContentChange = useCallback(async (newContent: string) => {
+    try {
+      // Get current content from DocumentService
+      const currentContent = documentService.getContent();
+      
+      // Calculate the difference and update accordingly
+      if (newContent.length > currentContent.length) {
+        // Content was added
+        const addedContent = newContent.slice(currentContent.length);
+        await documentService.appendContent(addedContent);
+      } else {
+        // Content was modified or removed - use replace
+        await documentService.replaceContent(currentContent, newContent);
+      }
+    } catch (err) {
+      // If no document is loaded, just update local state
+      setContent(newContent);
+      console.error('Error updating content:', err);
+    }
   }, []);
 
   // Keyboard shortcut for save (Ctrl+S / Cmd+S)
@@ -105,6 +166,21 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty, saveFile]);
+
+  // Monitor auto-save status
+  useEffect(() => {
+    // Check if we're in an auto-save state
+    const checkAutoSave = () => {
+      if (isDirty && !isSaving) {
+        setIsAutoSaving(true);
+      } else {
+        setIsAutoSaving(false);
+      }
+    };
+
+    const interval = setInterval(checkAutoSave, 1000);
+    return () => clearInterval(interval);
+  }, [isDirty, isSaving]);
 
   if (!fileHandle) {
     return (
@@ -166,6 +242,15 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
         <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">Plain Text Editor</span>
+            {/* Auto-save indicator */}
+            {isAutoSaving && (
+              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Auto-save enabled
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {/* Dirty State Indicator */}

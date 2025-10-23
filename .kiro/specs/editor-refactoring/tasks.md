@@ -225,7 +225,10 @@
   - Verify UI state consistency during history operations
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [-] 5. Integrate DocumentService with Editor UI
+- [x] 5. Integrate DocumentService with Editor UI
+
+
+
 
 
   - Update TextEditorPanel to use DocumentService instead of direct file operations
@@ -234,21 +237,27 @@
   - Remove document editing logic from App.tsx and move to DocumentService
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 5.1 Refactor TextEditorPanel to use DocumentService
+- [x] 5.1 Refactor TextEditorPanel to use DocumentService
+
+
   - Remove direct file system operations from TextEditorPanel
   - Subscribe to DocumentService events for content updates
   - Update editor content display based on document_loaded and content_changed events
   - Implement document state indicators (unsaved changes, auto-save status)
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
-- [ ] 5.2 Update App.tsx to use DocumentService
+
+- [x] 5.2 Update App.tsx to use DocumentService
+
   - Replace direct file operations in App.tsx with DocumentService calls
   - Remove file change history tracking (moved to DocumentService snapshots)
   - Update handleFileSelect to use DocumentService.setCurrentDocument
   - Simplify component state management by delegating to services
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 7.1, 7.2, 7.3, 7.4, 7.5_
 
-- [ ] 5.3 Implement automatic editor cleanup
+
+- [x] 5.3 Implement automatic editor cleanup
+
   - Add editor close detection to clear chat messages automatically
   - Preserve DocumentService state and chat history when editor closes
   - Ensure clean slate for new conversations on editor reopening

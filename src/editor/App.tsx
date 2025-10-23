@@ -6,15 +6,8 @@ import { storageService } from '../shared/services/StorageService';
 import { chatSessionManager } from '../shared/services/ChatSessionManager';
 import { chatHistoryService } from '../shared/services/ChatHistoryService';
 import { commandParserService } from '../shared/services/CommandParserService';
-import { fileSystemService } from '../shared/services/FileSystemService';
+import { documentService } from '../shared/services/DocumentService';
 import type { ExecutionContext, ChatContext } from '../shared/types/services';
-
-// Interface for tracking file change history
-interface FileChangeSnapshot {
-  timestamp: number;
-  content: string;
-  messageId: string;
-}
 
 function App() {
   const [currentFile, setCurrentFile] = useState<{
@@ -28,9 +21,6 @@ function App() {
   const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Track file change history for revert functionality
-  const [fileChangeHistory, setFileChangeHistory] = useState<FileChangeSnapshot[]>([]);
 
   // History modal state
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -61,6 +51,21 @@ function App() {
     };
 
     loadProviders();
+
+    // Cleanup on unmount: clear chat messages but preserve DocumentService and history
+    return () => {
+      // Clear chat session messages when editor closes
+      if (chatSession && chatSession.messages.length > 0) {
+        // Archive the current session before clearing
+        chatHistoryService.archiveSession(chatSession).catch(err => {
+          console.error('Failed to archive session on cleanup:', err);
+        });
+      }
+      
+      // Note: DocumentService state is preserved (not cleared)
+      // Note: Chat history is preserved in storage
+      // This ensures workspace and document context remain across editor sessions
+    };
   }, []);
 
   // Subscribe to session events
@@ -83,8 +88,37 @@ function App() {
     return unsubscribe;
   }, [chatSession]);
 
-  const handleFileSelect = (handle: FileSystemFileHandle, path: string) => {
+  // Handle editor close/unload - preserve state but archive chat
+  useEffect(() => {
+    const handleBeforeUnload = async () => {
+      // Archive current chat session if it has messages
+      if (chatSession && chatSession.messages.length > 0) {
+        try {
+          await chatHistoryService.archiveSession(chatSession);
+        } catch (err) {
+          console.error('Failed to archive session on unload:', err);
+        }
+      }
+      
+      // DocumentService state is automatically preserved
+      // Workspace context is maintained
+      // Chat history is persisted in storage
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [chatSession]);
+
+  const handleFileSelect = async (handle: FileSystemFileHandle, path: string) => {
     setCurrentFile({ handle, path });
+    
+    // Update DocumentService with the new file
+    try {
+      await documentService.setCurrentDocument(handle, path);
+    } catch (err) {
+      console.error('Failed to set current document:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load document');
+    }
   };
 
   const handleWorkspaceOpen = (handle: FileSystemDirectoryHandle) => {
@@ -205,9 +239,6 @@ function App() {
       
       setChatSession(newSession);
 
-      // Clear file change history for new session
-      setFileChangeHistory([]);
-
       // Clear any errors
       setError(null);
     } catch (err) {
@@ -259,9 +290,6 @@ function App() {
 
       setChatSession({ ...newSession, messages: restoredSession.messages });
 
-      // Clear file change history for restored session
-      setFileChangeHistory([]);
-
       // Close the modal
       setIsHistoryModalOpen(false);
 
@@ -296,28 +324,24 @@ function App() {
   const handleRevertCommand = async (_context: ChatContext) => {
     if (!chatSession) return;
 
-    // Check if there's a current file
-    if (!currentFile) {
+    // Check if there's a current document
+    const currentDoc = documentService.getCurrentDocument();
+    if (!currentDoc) {
       throw new Error('No file is currently open to revert changes');
     }
 
-    // Check if there's any change history
-    if (fileChangeHistory.length === 0) {
+    // Get snapshots from DocumentService
+    const snapshots = documentService.getSnapshots();
+    if (snapshots.length < 2) {
       throw new Error('No file modifications found to revert');
     }
 
-    // Get the last snapshot
-    const lastSnapshot = fileChangeHistory[fileChangeHistory.length - 1];
-
     try {
-      // Restore the file content from the snapshot
-      await fileSystemService.writeFile(currentFile.handle, lastSnapshot.content);
-
-      // Remove the last snapshot from history
-      setFileChangeHistory((prev) => prev.slice(0, -1));
-
-      // Trigger a re-render of the text editor by updating the file reference
-      setCurrentFile({ ...currentFile });
+      // Get the second-to-last snapshot (the one before the current state)
+      const previousSnapshot = snapshots[snapshots.length - 2];
+      
+      // Revert to the previous snapshot
+      await documentService.revertToSnapshot(previousSnapshot.id);
 
     } catch (err) {
       console.error('Failed to revert file:', err);

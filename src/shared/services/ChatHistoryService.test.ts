@@ -41,11 +41,11 @@ describe('ChatHistoryService', () => {
     vi.clearAllMocks();
     
     // Setup default mock implementations
-    mockChromeStorage.set.mockImplementation((data: any, callback: () => void) => {
+    mockChromeStorage.set.mockImplementation((_data: any, callback: () => void) => {
       callback();
     });
     
-    mockChromeStorage.get.mockImplementation((keys: string[], callback: (result: any) => void) => {
+    mockChromeStorage.get.mockImplementation((_keys: string[], callback: (result: any) => void) => {
       callback({ chatHistory: [] });
     });
     
@@ -297,7 +297,7 @@ describe('ChatHistoryService', () => {
     });
 
     it('should handle storage errors gracefully', async () => {
-      mockChromeStorage.set.mockImplementation((data: any, callback: () => void) => {
+      mockChromeStorage.set.mockImplementation((_data: any, callback: () => void) => {
         global.chrome.runtime.lastError = { message: 'Storage quota exceeded' };
         callback();
       });
@@ -320,7 +320,7 @@ describe('ChatHistoryService', () => {
       const records = await service.getArchivedSessions();
       
       // Mock storage to return the saved records
-      mockChromeStorage.get.mockImplementation((keys: string[], callback: (result: any) => void) => {
+      mockChromeStorage.get.mockImplementation((_keys: string[], callback: (result: any) => void) => {
         callback({ chatHistory: records });
       });
       
@@ -334,7 +334,7 @@ describe('ChatHistoryService', () => {
     });
 
     it('should handle empty storage', async () => {
-      mockChromeStorage.get.mockImplementation((keys: string[], callback: (result: any) => void) => {
+      mockChromeStorage.get.mockImplementation((_keys: string[], callback: (result: any) => void) => {
         callback({});
       });
       
@@ -345,7 +345,7 @@ describe('ChatHistoryService', () => {
     });
 
     it('should handle storage errors gracefully', async () => {
-      mockChromeStorage.get.mockImplementation((keys: string[], callback: (result: any) => void) => {
+      mockChromeStorage.get.mockImplementation((_keys: string[], callback: (result: any) => void) => {
         global.chrome.runtime.lastError = { message: 'Storage access denied' };
         callback({});
       });
