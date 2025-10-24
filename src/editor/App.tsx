@@ -214,10 +214,6 @@ function App() {
           handleNewCommand(chatContext);
           break;
 
-        case 'revert':
-          await handleRevertCommand(chatContext);
-          break;
-
         default:
           setError(`Unknown command type: ${(command as any).type}`);
       }
@@ -324,34 +320,6 @@ function App() {
   const handleNewCommand = (_context: ChatContext) => {
     // Delegate to handleNewChat
     handleNewChat();
-  };
-
-  const handleRevertCommand = async (_context: ChatContext) => {
-    if (!chatSession) return;
-
-    // Check if there's a current document
-    const currentDoc = documentService.getCurrentDocument();
-    if (!currentDoc) {
-      throw new Error('No file is currently open to revert changes');
-    }
-
-    // Get snapshots from DocumentService
-    const snapshots = documentService.getSnapshots();
-    if (snapshots.length < 2) {
-      throw new Error('No file modifications found to revert');
-    }
-
-    try {
-      // Get the second-to-last snapshot (the one before the current state)
-      const previousSnapshot = snapshots[snapshots.length - 2];
-      
-      // Revert to the previous snapshot
-      await documentService.revertToSnapshot(previousSnapshot.id);
-
-    } catch (err) {
-      console.error('Failed to revert file:', err);
-      throw new Error('Failed to revert file changes: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    }
   };
 
   return (

@@ -18,7 +18,6 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
   const [isDirty, setIsDirty] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
@@ -45,7 +44,6 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
         case 'document_saved':
           setIsDirty(false);
           setIsSaving(false);
-          setIsAutoSaving(false);
           setLastSaved(new Date(event.timestamp));
           break;
 
@@ -53,7 +51,6 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
           setError(event.error);
           setIsLoading(false);
           setIsSaving(false);
-          setIsAutoSaving(false);
           break;
       }
     };
@@ -79,8 +76,6 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
 
       try {
         await documentService.setCurrentDocument(fileHandle, filePath);
-        // Enable auto-save with 30 second interval
-        documentService.enableAutoSave(30000);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to load file';
         setError(errorMessage);
@@ -90,11 +85,6 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
     };
 
     loadFile();
-
-    // Cleanup: disable auto-save when component unmounts or file changes
-    return () => {
-      documentService.disableAutoSave();
-    };
   }, [fileHandle, filePath]);
 
   // Manual save functionality
@@ -167,20 +157,7 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty, saveFile]);
 
-  // Monitor auto-save status
-  useEffect(() => {
-    // Check if we're in an auto-save state
-    const checkAutoSave = () => {
-      if (isDirty && !isSaving) {
-        setIsAutoSaving(true);
-      } else {
-        setIsAutoSaving(false);
-      }
-    };
 
-    const interval = setInterval(checkAutoSave, 1000);
-    return () => clearInterval(interval);
-  }, [isDirty, isSaving]);
 
   if (!fileHandle) {
     return (
@@ -242,15 +219,6 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
         <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200">
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">Plain Text Editor</span>
-            {/* Auto-save indicator */}
-            {isAutoSaving && (
-              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                Auto-save enabled
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-3">
             {/* Dirty State Indicator */}

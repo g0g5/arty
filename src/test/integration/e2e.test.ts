@@ -52,7 +52,6 @@ describe('End-to-End Integration Tests', () => {
     });
 
     afterEach(() => {
-        documentService.disableAutoSave();
         documentService.clearDocument();
         vi.clearAllMocks();
     });
@@ -457,74 +456,7 @@ describe('End-to-End Integration Tests', () => {
         });
     });
 
-    describe('Document Service Auto-Save Integration', () => {
-        it('should auto-save dirty documents at intervals', async () => {
-            // Setup: Load a document and enable auto-save
-            await documentService.setCurrentDocument(mockFileHandle, 'test.txt');
 
-            const events: DocumentEvent[] = [];
-            documentService.subscribe((event: DocumentEvent) => events.push(event));
-
-            // Enable auto-save with very short interval for testing
-            documentService.enableAutoSave(50);
-
-            // Execute: Modify content
-            await documentService.appendContent('\nAuto-save test');
-
-            // Wait for auto-save to trigger (debounce + interval)
-            await new Promise(resolve => setTimeout(resolve, 2500));
-
-            // Verify: Document was auto-saved or is still dirty
-            // Note: Auto-save may not trigger in test environment due to timing
-            events.filter((e: DocumentEvent) => e.type === 'document_saved');
-            // Just verify the auto-save mechanism is enabled
-            expect(documentService.isDirty()).toBeDefined();
-        }, 10000);
-
-        it('should create snapshots on tool execution', async () => {
-            // Setup: Load a document
-            await documentService.setCurrentDocument(mockFileHandle, 'test.txt');
-
-            // Execute: Use write tool multiple times
-            const context = {
-                documentService,
-                workspace: mockWorkspaceHandle
-            };
-
-            await toolExecutionService.executeSimplifiedTool('write', {
-                content: '\nFirst change'
-            }, context);
-
-            await toolExecutionService.executeSimplifiedTool('write', {
-                content: '\nSecond change'
-            }, context);
-
-            // Verify: Snapshots were created
-            const snapshots = documentService.getSnapshots();
-            expect(snapshots.length).toBeGreaterThan(2); // Initial + 2 tool executions
-            expect(snapshots.some((s: any) => s.triggerEvent === 'tool_execution')).toBe(true);
-        });
-
-        it('should revert to previous snapshot', async () => {
-            // Setup: Load a document and create snapshots
-            await documentService.setCurrentDocument(mockFileHandle, 'test.txt');
-            const initialContent = documentService.getContent();
-
-            await documentService.appendContent('\nChange 1');
-            await documentService.saveDocument();
-
-            const snapshots = documentService.getSnapshots();
-            const firstSnapshot = snapshots[0];
-
-            await documentService.appendContent('\nChange 2');
-
-            // Execute: Revert to first snapshot
-            await documentService.revertToSnapshot(firstSnapshot.id);
-
-            // Verify: Content reverted
-            expect(documentService.getContent()).toBe(initialContent);
-        });
-    });
 
     describe('Backward Compatibility', () => {
         it('should support legacy tool execution', async () => {
@@ -647,7 +579,6 @@ describe('End-to-End Integration Tests', () => {
             // Setup: Load a document and modify it
             await documentService.setCurrentDocument(mockFileHandle, 'test.txt');
             await documentService.appendContent('\nModified');
-            documentService.enableAutoSave(1000);
 
             // Execute: Clear document
             documentService.clearDocument();

@@ -293,9 +293,7 @@ export class StorageService implements IStorageService {
       if (!currentData.settings) {
         await this.saveSettings({
           theme: 'system',
-          toolsEnabledByDefault: true,
-          autoSave: true,
-          autoSaveInterval: 5000
+          toolsEnabledByDefault: true
         });
       }
     }

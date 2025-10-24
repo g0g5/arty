@@ -2,7 +2,7 @@
  * DocumentService Unit Tests
  * Tests document state management and event emission
  * Tests content operations (append, replace, search)
- * Tests auto-save functionality and snapshot system
+ * Tests snapshot system
  * Tests error handling for file system operations
  */
 
@@ -45,7 +45,6 @@ describe('DocumentService', () => {
   });
 
   afterEach(() => {
-    service.disableAutoSave();
     service.clearDocument();
   });
 
@@ -366,103 +365,7 @@ describe('DocumentService', () => {
     });
   });
 
-  describe('Auto-save Functionality', () => {
-    beforeEach(async () => {
-      await service.setCurrentDocument(mockFileHandle, '/test/test.txt');
-    });
 
-    it.skip('should enable auto-save with custom interval', async () => {
-      vi.useFakeTimers();
-      const eventListener = vi.fn();
-      service.subscribe(eventListener);
-
-      service.enableAutoSave(1000); // 1 second
-      await service.appendContent('\nmodified');
-
-      // Advance time in steps to trigger interval and debounce
-      await vi.advanceTimersByTimeAsync(1000); // Trigger interval
-      await vi.advanceTimersByTimeAsync(2000); // Trigger debounce
-      await vi.runAllTimersAsync(); // Run any remaining timers
-
-      expect(mockWritable.write).toHaveBeenCalledWith('test content\nmodified');
-      expect(service.isDirty()).toBe(false);
-
-      expect(eventListener).toHaveBeenCalledWith({
-        type: 'document_saved',
-        timestamp: expect.any(Number)
-      });
-
-      vi.useRealTimers();
-    });
-
-    it('should not auto-save when document is not dirty', async () => {
-      vi.useFakeTimers();
-
-      service.enableAutoSave(1000);
-      
-      // Fast-forward time without making changes
-      await vi.advanceTimersByTimeAsync(1000);
-
-      expect(mockWritable.write).not.toHaveBeenCalled();
-
-      vi.useRealTimers();
-    });
-
-    it('should disable auto-save', async () => {
-      vi.useFakeTimers();
-
-      service.enableAutoSave(1000);
-      await service.appendContent('\nmodified');
-      
-      service.disableAutoSave();
-      
-      // Fast-forward time
-      vi.advanceTimersByTime(1000);
-      await vi.runAllTimersAsync();
-
-      expect(mockWritable.write).not.toHaveBeenCalled();
-
-      vi.useRealTimers();
-    });
-
-    it.skip('should handle auto-save errors gracefully', async () => {
-      vi.useFakeTimers();
-      const eventListener = vi.fn();
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      service.subscribe(eventListener);
-
-      mockWritable.write = vi.fn().mockRejectedValue(new Error('Auto-save failed'));
-
-      service.enableAutoSave(1000);
-      await service.appendContent('\nmodified');
-
-      // Advance time in steps to trigger interval and debounce
-      await vi.advanceTimersByTimeAsync(1000); // Trigger interval
-      await vi.advanceTimersByTimeAsync(2000); // Trigger debounce
-      await vi.runAllTimersAsync(); // Run any remaining timers
-
-      expect(consoleSpy).toHaveBeenCalledWith('Auto-save failed:', expect.any(Error));
-      expect(eventListener).toHaveBeenCalledWith({
-        type: 'error',
-        error: expect.stringContaining('Auto-save failed')
-      });
-
-      consoleSpy.mockRestore();
-      vi.useRealTimers();
-    });
-
-    it('should clear existing interval when enabling auto-save again', async () => {
-      vi.useFakeTimers();
-      const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
-
-      service.enableAutoSave(1000);
-      service.enableAutoSave(2000); // Should clear previous interval
-
-      expect(clearIntervalSpy).toHaveBeenCalled();
-
-      vi.useRealTimers();
-    });
-  });
 
   describe('Utility Methods', () => {
     it('should return correct dirty state', async () => {

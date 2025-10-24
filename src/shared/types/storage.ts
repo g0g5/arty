@@ -14,8 +14,6 @@ export interface AppSettings {
   defaultProvider?: string;      // Default provider ID
   defaultModel?: string;         // Default model ID
   toolsEnabledByDefault?: boolean;
-  autoSave?: boolean;
-  autoSaveInterval?: number;     // Milliseconds
 }
 
 /**

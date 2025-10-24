@@ -4,35 +4,32 @@
  * Follows the same event-driven pattern as ChatSessionManager
  */
 
-import type { 
-  IDocumentService, 
-  DocumentState, 
-  DocumentSnapshot, 
-  DocumentEvent, 
-  DocumentEventListener, 
-  MatchResult 
+import type {
+  IDocumentService,
+  DocumentState,
+  DocumentSnapshot,
+  DocumentEvent,
+  DocumentEventListener,
+  MatchResult
 } from '../types/services';
-import { 
-  createServiceError, 
-  ErrorCode, 
+import {
+  createServiceError,
+  ErrorCode,
   retryWithBackoff,
-  type ServiceError 
+  type ServiceError
 } from '../utils/errorHandling';
-import { 
-  LRUCache, 
-  debounce, 
-  optimizeRegexSearch 
+import {
+  LRUCache,
+  optimizeRegexSearch
 } from '../utils/performance';
 
 export class DocumentService implements IDocumentService {
   private static instance: DocumentService;
   private currentDocument: DocumentState | null = null;
   private listeners: Set<DocumentEventListener> = new Set();
-  private autoSaveInterval: NodeJS.Timeout | null = null;
   private contentCache: LRUCache<string, string> = new LRUCache(50);
-  private debouncedAutoSave: (() => void) | null = null;
 
-  private constructor() {}
+  private constructor() { }
 
   public static getInstance(): DocumentService {
     if (!DocumentService.instance) {
@@ -78,7 +75,7 @@ export class DocumentService implements IDocumentService {
           const file = await handle.getFile();
           return await file.text();
         });
-        
+
         // Cache the content
         this.contentCache.set(path, content);
       }
@@ -105,14 +102,14 @@ export class DocumentService implements IDocumentService {
         true,
         ['Check file permissions', 'Verify the file exists', 'Try selecting the file again']
       );
-      
-      this.emit({ 
-        type: 'error', 
+
+      this.emit({
+        type: 'error',
         error: serviceError.message
       });
       throw serviceError;
     }
-  } 
+  }
   /**
    * Get current document content
    */
@@ -146,11 +143,11 @@ export class DocumentService implements IDocumentService {
     try {
       // Sanitize content
       const sanitizedContent = this.sanitizeContent(content);
-      
+
       // Validate content size
       const newContent = this.currentDocument.content + sanitizedContent;
       this.validateContent(newContent);
-      
+
       // Update document content
       this.currentDocument.content = newContent;
       this.currentDocument.isDirty = true;
@@ -167,9 +164,9 @@ export class DocumentService implements IDocumentService {
         true,
         ['Check content size', 'Verify content format']
       );
-      
-      this.emit({ 
-        type: 'error', 
+
+      this.emit({
+        type: 'error',
         error: serviceError.message
       });
       throw serviceError;
@@ -193,10 +190,10 @@ export class DocumentService implements IDocumentService {
     try {
       // Sanitize replacement content
       const sanitizedReplacement = this.sanitizeContent(replacement);
-      
+
       // Perform replacement
       const newContent = this.currentDocument.content.replace(target, sanitizedReplacement);
-      
+
       if (newContent === this.currentDocument.content) {
         throw createServiceError(
           ErrorCode.VALIDATION_ERROR,
@@ -220,22 +217,22 @@ export class DocumentService implements IDocumentService {
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error) {
         // Already a ServiceError, re-throw
-        this.emit({ 
-          type: 'error', 
+        this.emit({
+          type: 'error',
           error: (error as ServiceError).message
         });
         throw error;
       }
-      
+
       const serviceError = createServiceError(
         ErrorCode.INVALID_CONTENT,
         'Failed to replace content',
         error,
         true
       );
-      
-      this.emit({ 
-        type: 'error', 
+
+      this.emit({
+        type: 'error',
         error: serviceError.message
       });
       throw serviceError;
@@ -267,9 +264,9 @@ export class DocumentService implements IDocumentService {
         true,
         ['Check regex syntax', 'Escape special characters']
       );
-      
-      this.emit({ 
-        type: 'error', 
+
+      this.emit({
+        type: 'error',
         error: serviceError.message
       });
       throw serviceError;
@@ -346,9 +343,9 @@ export class DocumentService implements IDocumentService {
         true,
         ['Check file permissions', 'Ensure disk space is available', 'Try saving again']
       );
-      
-      this.emit({ 
-        type: 'error', 
+
+      this.emit({
+        type: 'error',
         error: serviceError.message
       });
       throw serviceError;
@@ -392,22 +389,22 @@ export class DocumentService implements IDocumentService {
     } catch (error) {
       if (error && typeof error === 'object' && 'code' in error) {
         // Already a ServiceError, re-throw
-        this.emit({ 
-          type: 'error', 
+        this.emit({
+          type: 'error',
           error: (error as ServiceError).message
         });
         throw error;
       }
-      
+
       const serviceError = createServiceError(
         ErrorCode.UNKNOWN_ERROR,
         'Failed to revert to snapshot',
         error,
         true
       );
-      
-      this.emit({ 
-        type: 'error', 
+
+      this.emit({
+        type: 'error',
         error: serviceError.message
       });
       throw serviceError;
@@ -436,73 +433,7 @@ export class DocumentService implements IDocumentService {
     }
   }
 
-  /**
-   * Enable auto-save functionality with debouncing
-   */
-  public enableAutoSave(intervalMs: number = 30000): void {
-    this.disableAutoSave(); // Clear any existing interval
-    
-    // Create debounced auto-save function
-    this.debouncedAutoSave = debounce(async () => {
-      if (this.currentDocument && this.currentDocument.isDirty) {
-        try {
-          await this.performAutoSave();
-        } catch (error) {
-          console.error('Auto-save failed:', error);
-          this.emit({ 
-            type: 'error', 
-            error: 'Auto-save failed: ' + (error instanceof Error ? error.message : 'Unknown error')
-          });
-        }
-      }
-    }, 2000); // Debounce by 2 seconds
-    
-    // Set up interval to check for dirty state
-    this.autoSaveInterval = setInterval(() => {
-      if (this.currentDocument && this.currentDocument.isDirty && this.debouncedAutoSave) {
-        this.debouncedAutoSave();
-      }
-    }, intervalMs);
-  }
 
-  /**
-   * Disable auto-save functionality
-   */
-  public disableAutoSave(): void {
-    if (this.autoSaveInterval) {
-      clearInterval(this.autoSaveInterval);
-      this.autoSaveInterval = null;
-    }
-    this.debouncedAutoSave = null;
-  }
-
-  /**
-   * Perform auto-save operation
-   */
-  private async performAutoSave(): Promise<void> {
-    if (!this.currentDocument) return;
-
-    try {
-      // Validate content before saving
-      this.validateContent(this.currentDocument.content);
-
-      // Create writable stream and write content
-      const writable = await this.currentDocument.handle.createWritable();
-      await writable.write(this.currentDocument.content);
-      await writable.close();
-
-      // Update document state
-      this.currentDocument.isDirty = false;
-      this.currentDocument.lastSaved = Date.now();
-
-      // Create snapshot for auto-save
-      this.createSnapshot('auto_save');
-
-      this.emit({ type: 'document_saved', timestamp: this.currentDocument.lastSaved });
-    } catch (error) {
-      throw error; // Re-throw for error handling in enableAutoSave
-    }
-  }
 
   /**
    * Get document snapshots
@@ -532,7 +463,6 @@ export class DocumentService implements IDocumentService {
    * Clear current document
    */
   public clearDocument(): void {
-    this.disableAutoSave();
     this.currentDocument = null;
   }
 

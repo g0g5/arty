@@ -89,8 +89,7 @@ export interface IToolExecutionService {
  * Chat command definitions
  */
 export type Command = 
-  | { type: "new" }
-  | { type: "revert" };
+  | { type: "new" };
 
 /**
  * Chat Context
@@ -132,10 +131,6 @@ export interface IDocumentService {
   
   // Event system
   subscribe(listener: DocumentEventListener): () => void;
-  
-  // Auto-save management
-  enableAutoSave(intervalMs: number): void;
-  disableAutoSave(): void;
 }
 
 /**
@@ -157,7 +152,7 @@ export interface DocumentSnapshot {
   id: string;
   timestamp: number;
   content: string;
-  triggerEvent: 'manual_save' | 'tool_execution' | 'auto_save';
+  triggerEvent: 'manual_save' | 'tool_execution';
   messageId?: string;
 }
 

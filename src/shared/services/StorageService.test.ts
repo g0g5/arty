@@ -113,8 +113,6 @@ describe('StorageService', () => {
       const mockSettings: AppSettings = {
         theme: 'dark',
         toolsEnabledByDefault: true,
-        autoSave: true,
-        autoSaveInterval: 5000,
       };
 
       vi.mocked(chrome.storage.local.set).mockImplementation((_items, callback) => {
@@ -354,8 +352,6 @@ describe('StorageService', () => {
           settings: expect.objectContaining({
             theme: 'system',
             toolsEnabledByDefault: true,
-            autoSave: true,
-            autoSaveInterval: 5000,
           }),
         }),
         expect.any(Function)
@@ -363,7 +359,7 @@ describe('StorageService', () => {
     });
 
     it('should not overwrite existing settings during migration', async () => {
-      const existingSettings = { theme: 'dark', autoSave: false };
+      const existingSettings = { theme: 'dark' };
 
       // Mock getAll to return existing settings
       vi.mocked(chrome.storage.local.get).mockImplementation((_keys, callback) => {

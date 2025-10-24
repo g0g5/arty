@@ -54,8 +54,6 @@ vi.mock('../../shared/services', () => {
         listeners.forEach(listener => listener({ type: 'document_saved', timestamp: mockDocument.lastSaved }));
       }),
       isDirty: vi.fn(() => mockDocument?.isDirty || false),
-      enableAutoSave: vi.fn(),
-      disableAutoSave: vi.fn(),
       clearDocument: vi.fn(() => {
         mockDocument = null;
       }),
@@ -289,8 +287,6 @@ describe('TextEditorPanel DocumentService Integration Tests', () => {
         expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
       });
 
-      // Auto-save should be enabled after loading
-      expect(documentService.enableAutoSave).toHaveBeenCalledWith(30000);
     });
 
     it('should disable save button when content is not dirty', async () => {
@@ -399,47 +395,9 @@ describe('TextEditorPanel DocumentService Integration Tests', () => {
         expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
       });
 
-      expect(documentService.enableAutoSave).toHaveBeenCalledWith(30000);
     });
 
-    it('should disable auto-save when component unmounts', async () => {
-      const { unmount } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
 
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
-      });
-
-      unmount();
-
-      expect(documentService.disableAutoSave).toHaveBeenCalled();
-    });
-
-    it('should disable auto-save when file changes', async () => {
-      const { rerender } = render(<TextEditorPanel fileHandle={mockFileHandle} filePath="test.md" />);
-
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Start typing your content...')).toBeInTheDocument();
-      });
-
-      // Change file
-      const newMockFile = new File(['New file content'], 'test2.md', { 
-        type: 'text/markdown',
-        lastModified: Date.now()
-      });
-      const newMockFileHandle = {
-        kind: 'file',
-        name: 'test2.md',
-        getFile: vi.fn().mockResolvedValue(newMockFile),
-        createWritable: vi.fn(),
-      } as unknown as FileSystemFileHandle;
-
-      rerender(<TextEditorPanel fileHandle={newMockFileHandle} filePath="test2.md" />);
-
-      // Should disable auto-save for old file and enable for new file
-      await waitFor(() => {
-        expect(documentService.disableAutoSave).toHaveBeenCalled();
-      });
-    });
   });
 
   describe('Editor Cleanup and State Preservation', () => {

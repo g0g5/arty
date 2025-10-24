@@ -110,9 +110,7 @@ export async function initializeDefaultSettings(): Promise<void> {
   if (Object.keys(settings).length === 0) {
     await storageService.saveSettings({
       theme: 'system',
-      toolsEnabledByDefault: true,
-      autoSave: true,
-      autoSaveInterval: 5000
+      toolsEnabledByDefault: true
     });
   }
 }

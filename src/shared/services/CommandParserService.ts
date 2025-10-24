@@ -1,10 +1,9 @@
 /**
  * Command Parser Service
- * Parses and executes chat commands like /new and /revert
+ * Parses and executes chat commands like /new
  */
 
 import type { ICommandParserService, Command, ChatContext } from '../types/services';
-import type { ChatMessage } from '../types/models';
 
 /**
  * Command Parser Service Implementation
@@ -52,9 +51,6 @@ export class CommandParserService implements ICommandParserService {
       case 'new':
         return { type: 'new' };
       
-      case 'revert':
-        return { type: 'revert' };
-      
       default:
         // Unknown command
         return null;
@@ -73,10 +69,6 @@ export class CommandParserService implements ICommandParserService {
         this.executeNewCommand(context);
         break;
       
-      case 'revert':
-        this.executeRevertCommand(context);
-        break;
-      
       default:
         throw new Error(`Unknown command type: ${(command as any).type}`);
     }
@@ -92,61 +84,6 @@ export class CommandParserService implements ICommandParserService {
 
     // Generate new session ID
     context.sessionId = this.generateSessionId();
-  }
-
-  /**
-   * Execute /revert command - reverts the last model change to file
-   * @param context Chat context
-   * @throws {Error} If there are no changes to revert or current file is not available
-   */
-  private executeRevertCommand(context: ChatContext): void {
-    if (!context.currentFile) {
-      throw new Error('No file is currently open to revert changes');
-    }
-
-    // Find the last assistant message with tool calls that modified the file
-    const lastModifyingMessage = this.findLastModifyingMessage(context.messages);
-
-    if (!lastModifyingMessage) {
-      throw new Error('No file modifications found to revert');
-    }
-
-    // Note: The actual revert logic (restoring file content) should be handled
-    // by the component that calls this service, as it needs access to file state
-    // and the FileSystemService. This method validates that revert is possible
-    // and marks the message for revert.
-    
-    // In a real implementation, we would:
-    // 1. Store file snapshots before each modification
-    // 2. Restore the previous snapshot
-    // 3. Update the editor content
-    // For now, we just validate that revert is possible
-  }
-
-  /**
-   * Find the last assistant message that modified the file
-   * @param messages Array of chat messages
-   * @returns Last modifying message or null if none found
-   */
-  private findLastModifyingMessage(messages: ChatMessage[]): ChatMessage | null {
-    // Iterate backwards through messages
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const message = messages[i];
-      
-      // Check if it's an assistant message with tool calls
-      if (message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0) {
-        // Check if any tool call modified the file
-        const hasModifyingTool = message.toolCalls.some(toolCall => 
-          toolCall.name === 'write_append' || toolCall.name === 'find_replace'
-        );
-        
-        if (hasModifyingTool) {
-          return message;
-        }
-      }
-    }
-    
-    return null;
   }
 
   /**
@@ -180,7 +117,7 @@ export class CommandParserService implements ICommandParserService {
       
       return {
         valid: false,
-        error: `Unknown command: /${commandName}. Available commands: /new, /revert`
+        error: `Unknown command: /${commandName}. Available commands: /new`
       };
     }
 
