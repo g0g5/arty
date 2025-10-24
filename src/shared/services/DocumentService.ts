@@ -240,6 +240,215 @@ export class DocumentService implements IDocumentService {
   }
 
   /**
+   * Insert content at a specific position
+   */
+  public async insertAt(position: number, content: string): Promise<void> {
+    if (!this.currentDocument) {
+      throw createServiceError(
+        ErrorCode.NO_DOCUMENT_LOADED,
+        'No document is currently loaded',
+        undefined,
+        false,
+        ['Open a file in the editor first']
+      );
+    }
+
+    try {
+      // Validate position
+      if (position < 0 || position > this.currentDocument.content.length) {
+        throw createServiceError(
+          ErrorCode.VALIDATION_ERROR,
+          `Invalid position: must be between 0 and ${this.currentDocument.content.length}`,
+          { position, contentLength: this.currentDocument.content.length },
+          false,
+          ['Check position value', 'Ensure position is within content bounds']
+        );
+      }
+
+      // Sanitize content
+      const sanitizedContent = this.sanitizeContent(content);
+
+      // Insert content at position
+      const newContent = 
+        this.currentDocument.content.slice(0, position) + 
+        sanitizedContent + 
+        this.currentDocument.content.slice(position);
+
+      // Validate content size
+      this.validateContent(newContent);
+
+      // Update document content
+      this.currentDocument.content = newContent;
+      this.currentDocument.isDirty = true;
+
+      // Create snapshot
+      this.createSnapshot('tool_execution');
+
+      this.emit({ type: 'content_changed', content: this.currentDocument.content });
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error) {
+        // Already a ServiceError, re-throw
+        this.emit({
+          type: 'error',
+          error: (error as ServiceError).message
+        });
+        throw error;
+      }
+
+      const serviceError = createServiceError(
+        ErrorCode.INVALID_CONTENT,
+        'Failed to insert content',
+        error,
+        true,
+        ['Check position value', 'Verify content format']
+      );
+
+      this.emit({
+        type: 'error',
+        error: serviceError.message
+      });
+      throw serviceError;
+    }
+  }
+
+  /**
+   * Delete content from a specific range
+   */
+  public async deleteRange(start: number, end: number): Promise<void> {
+    if (!this.currentDocument) {
+      throw createServiceError(
+        ErrorCode.NO_DOCUMENT_LOADED,
+        'No document is currently loaded',
+        undefined,
+        false,
+        ['Open a file in the editor first']
+      );
+    }
+
+    try {
+      // Validate range
+      if (start < 0 || end > this.currentDocument.content.length || start > end) {
+        throw createServiceError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid range: start must be <= end and within content bounds',
+          { start, end, contentLength: this.currentDocument.content.length },
+          false,
+          ['Check start and end values', 'Ensure range is within content bounds']
+        );
+      }
+
+      // Delete content in range
+      const newContent = 
+        this.currentDocument.content.slice(0, start) + 
+        this.currentDocument.content.slice(end);
+
+      // Update document content
+      this.currentDocument.content = newContent;
+      this.currentDocument.isDirty = true;
+
+      // Create snapshot
+      this.createSnapshot('tool_execution');
+
+      this.emit({ type: 'content_changed', content: this.currentDocument.content });
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error) {
+        // Already a ServiceError, re-throw
+        this.emit({
+          type: 'error',
+          error: (error as ServiceError).message
+        });
+        throw error;
+      }
+
+      const serviceError = createServiceError(
+        ErrorCode.INVALID_CONTENT,
+        'Failed to delete content',
+        error,
+        true,
+        ['Check range values', 'Ensure range is valid']
+      );
+
+      this.emit({
+        type: 'error',
+        error: serviceError.message
+      });
+      throw serviceError;
+    }
+  }
+
+  /**
+   * Replace content in a specific range
+   */
+  public async replaceRange(start: number, end: number, replacement: string): Promise<void> {
+    if (!this.currentDocument) {
+      throw createServiceError(
+        ErrorCode.NO_DOCUMENT_LOADED,
+        'No document is currently loaded',
+        undefined,
+        false,
+        ['Open a file in the editor first']
+      );
+    }
+
+    try {
+      // Validate range
+      if (start < 0 || end > this.currentDocument.content.length || start > end) {
+        throw createServiceError(
+          ErrorCode.VALIDATION_ERROR,
+          'Invalid range: start must be <= end and within content bounds',
+          { start, end, contentLength: this.currentDocument.content.length },
+          false,
+          ['Check start and end values', 'Ensure range is within content bounds']
+        );
+      }
+
+      // Sanitize replacement content
+      const sanitizedReplacement = this.sanitizeContent(replacement);
+
+      // Replace content in range
+      const newContent = 
+        this.currentDocument.content.slice(0, start) + 
+        sanitizedReplacement + 
+        this.currentDocument.content.slice(end);
+
+      // Validate content size
+      this.validateContent(newContent);
+
+      // Update document content
+      this.currentDocument.content = newContent;
+      this.currentDocument.isDirty = true;
+
+      // Create snapshot
+      this.createSnapshot('tool_execution');
+
+      this.emit({ type: 'content_changed', content: this.currentDocument.content });
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error) {
+        // Already a ServiceError, re-throw
+        this.emit({
+          type: 'error',
+          error: (error as ServiceError).message
+        });
+        throw error;
+      }
+
+      const serviceError = createServiceError(
+        ErrorCode.INVALID_CONTENT,
+        'Failed to replace content',
+        error,
+        true,
+        ['Check range values', 'Verify replacement content format']
+      );
+
+      this.emit({
+        type: 'error',
+        error: serviceError.message
+      });
+      throw serviceError;
+    }
+  }
+
+  /**
    * Search content using regex pattern (optimized for large documents)
    */
   public searchContent(pattern: string): MatchResult[] {

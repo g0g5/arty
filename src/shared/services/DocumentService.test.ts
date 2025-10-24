@@ -367,6 +367,377 @@ describe('DocumentService', () => {
 
 
 
+  describe('Position-Aware Content Operations', () => {
+    beforeEach(async () => {
+      // Clear cache to ensure fresh state
+      service.clearCache();
+      
+      // Create a fresh mock file for each test
+      mockFile = new File(['test content'], 'test.txt', {
+        type: 'text/plain',
+        lastModified: Date.now()
+      });
+      mockFileHandle.getFile = vi.fn().mockResolvedValue(mockFile);
+      
+      await service.setCurrentDocument(mockFileHandle, '/test/test.txt');
+    });
+
+    describe('insertAt', () => {
+      it('should insert content at the beginning', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await service.insertAt(0, 'prefix ');
+
+        const content = service.getContent();
+        expect(content).toBe('prefix test content');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'prefix test content'
+        });
+      });
+
+      it('should insert content at the end', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        const currentContent = service.getContent();
+        await service.insertAt(currentContent.length, ' suffix');
+
+        const content = service.getContent();
+        expect(content).toBe('test content suffix');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'test content suffix'
+        });
+      });
+
+      it('should insert content in the middle', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await service.insertAt(5, 'INSERTED ');
+
+        const content = service.getContent();
+        expect(content).toBe('test INSERTED content');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'test INSERTED content'
+        });
+      });
+
+      it('should throw error for negative position', async () => {
+        await expect(service.insertAt(-1, 'test'))
+          .rejects.toThrow(/Invalid position: must be between 0 and \d+/);
+      });
+
+      it('should throw error for position beyond content length', async () => {
+        const currentContent = service.getContent();
+        await expect(service.insertAt(currentContent.length + 1, 'test'))
+          .rejects.toThrow(`Invalid position: must be between 0 and ${currentContent.length}`);
+      });
+
+      it('should sanitize content when inserting', async () => {
+        await service.insertAt(5, '\r\nWindows\r\nLine\0null');
+
+        const content = service.getContent();
+        expect(content).toBe('test \nWindows\nLinenullcontent');
+      });
+
+      it('should create snapshot after insertion', async () => {
+        const snapshotsBefore = service.getSnapshots().length;
+        await service.insertAt(5, 'new ');
+        const snapshotsAfter = service.getSnapshots().length;
+
+        expect(snapshotsAfter).toBe(snapshotsBefore + 1);
+        const lastSnapshot = service.getSnapshots()[snapshotsAfter - 1];
+        expect(lastSnapshot.triggerEvent).toBe('tool_execution');
+        expect(lastSnapshot.content).toBe('test new content');
+      });
+
+      it('should throw error when inserting with no document loaded', async () => {
+        service.clearDocument();
+        await expect(service.insertAt(0, 'test'))
+          .rejects.toThrow('No document is currently loaded');
+      });
+
+      it('should emit error event on insertion failure', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await expect(service.insertAt(-1, 'test')).rejects.toThrow();
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'error',
+          error: expect.stringContaining('Invalid position')
+        });
+      });
+    });
+
+    describe('deleteRange', () => {
+      it('should delete content from the beginning', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await service.deleteRange(0, 5);
+
+        const content = service.getContent();
+        expect(content).toBe('content');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'content'
+        });
+      });
+
+      it('should delete content from the end', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await service.deleteRange(5, 12);
+
+        const content = service.getContent();
+        expect(content).toBe('test ');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'test '
+        });
+      });
+
+      it('should delete content from the middle', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await service.deleteRange(5, 8);
+
+        const content = service.getContent();
+        expect(content).toBe('test tent');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'test tent'
+        });
+      });
+
+      it('should delete entire content', async () => {
+        const currentContent = service.getContent();
+        await service.deleteRange(0, currentContent.length);
+
+        const content = service.getContent();
+        expect(content).toBe('');
+        expect(service.isDirty()).toBe(true);
+      });
+
+      it('should handle zero-length range (no deletion)', async () => {
+        await service.deleteRange(5, 5);
+
+        const content = service.getContent();
+        expect(content).toBe('test content');
+      });
+
+      it('should throw error for negative start position', async () => {
+        await expect(service.deleteRange(-1, 5))
+          .rejects.toThrow('Invalid range: start must be <= end and within content bounds');
+      });
+
+      it('should throw error for end position beyond content length', async () => {
+        const currentContent = service.getContent();
+        await expect(service.deleteRange(0, currentContent.length + 1))
+          .rejects.toThrow('Invalid range: start must be <= end and within content bounds');
+      });
+
+      it('should throw error when start > end', async () => {
+        await expect(service.deleteRange(10, 5))
+          .rejects.toThrow('Invalid range: start must be <= end and within content bounds');
+      });
+
+      it('should create snapshot after deletion', async () => {
+        const snapshotsBefore = service.getSnapshots().length;
+        await service.deleteRange(5, 8);
+        const snapshotsAfter = service.getSnapshots().length;
+
+        expect(snapshotsAfter).toBe(snapshotsBefore + 1);
+        const lastSnapshot = service.getSnapshots()[snapshotsAfter - 1];
+        expect(lastSnapshot.triggerEvent).toBe('tool_execution');
+        expect(lastSnapshot.content).toBe('test tent');
+      });
+
+      it('should throw error when deleting with no document loaded', async () => {
+        service.clearDocument();
+        await expect(service.deleteRange(0, 5))
+          .rejects.toThrow('No document is currently loaded');
+      });
+
+      it('should emit error event on deletion failure', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await expect(service.deleteRange(-1, 5)).rejects.toThrow();
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'error',
+          error: expect.stringContaining('Invalid range')
+        });
+      });
+    });
+
+    describe('replaceRange', () => {
+      it('should replace content at the beginning', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await service.replaceRange(0, 4, 'best');
+
+        const content = service.getContent();
+        expect(content).toBe('best content');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'best content'
+        });
+      });
+
+      it('should replace content at the end', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await service.replaceRange(5, 12, 'data');
+
+        const content = service.getContent();
+        expect(content).toBe('test data');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'test data'
+        });
+      });
+
+      it('should replace content in the middle', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await service.replaceRange(5, 12, 'text');
+
+        const content = service.getContent();
+        expect(content).toBe('test text');
+        expect(service.isDirty()).toBe(true);
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'content_changed',
+          content: 'test text'
+        });
+      });
+
+      it('should replace with longer content', async () => {
+        await service.replaceRange(5, 12, 'longer replacement text');
+
+        const content = service.getContent();
+        expect(content).toBe('test longer replacement text');
+      });
+
+      it('should replace with shorter content', async () => {
+        await service.replaceRange(5, 12, 'x');
+
+        const content = service.getContent();
+        expect(content).toBe('test x');
+      });
+
+      it('should replace with empty string (effectively delete)', async () => {
+        await service.replaceRange(5, 12, '');
+
+        const content = service.getContent();
+        expect(content).toBe('test ');
+      });
+
+      it('should handle zero-length range (effectively insert)', async () => {
+        await service.replaceRange(5, 5, 'INSERTED ');
+
+        const content = service.getContent();
+        expect(content).toBe('test INSERTED content');
+      });
+
+      it('should throw error for negative start position', async () => {
+        await expect(service.replaceRange(-1, 5, 'test'))
+          .rejects.toThrow('Invalid range: start must be <= end and within content bounds');
+      });
+
+      it('should throw error for end position beyond content length', async () => {
+        const currentContent = service.getContent();
+        await expect(service.replaceRange(0, currentContent.length + 1, 'test'))
+          .rejects.toThrow('Invalid range: start must be <= end and within content bounds');
+      });
+
+      it('should throw error when start > end', async () => {
+        await expect(service.replaceRange(10, 5, 'test'))
+          .rejects.toThrow('Invalid range: start must be <= end and within content bounds');
+      });
+
+      it('should sanitize replacement content', async () => {
+        await service.replaceRange(5, 12, '\r\nWindows\r\nLine\0null');
+
+        const content = service.getContent();
+        expect(content).toBe('test \nWindows\nLinenull');
+      });
+
+      it('should create snapshot after replacement', async () => {
+        const snapshotsBefore = service.getSnapshots().length;
+        await service.replaceRange(5, 12, 'data');
+        const snapshotsAfter = service.getSnapshots().length;
+
+        expect(snapshotsAfter).toBe(snapshotsBefore + 1);
+        const lastSnapshot = service.getSnapshots()[snapshotsAfter - 1];
+        expect(lastSnapshot.triggerEvent).toBe('tool_execution');
+        expect(lastSnapshot.content).toBe('test data');
+      });
+
+      it('should throw error when replacing with no document loaded', async () => {
+        service.clearDocument();
+        await expect(service.replaceRange(0, 5, 'test'))
+          .rejects.toThrow('No document is currently loaded');
+      });
+
+      it('should emit error event on replacement failure', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        await expect(service.replaceRange(-1, 5, 'test')).rejects.toThrow();
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'error',
+          error: expect.stringContaining('Invalid range')
+        });
+      });
+
+      it('should validate content size after replacement', async () => {
+        const eventListener = vi.fn();
+        service.subscribe(eventListener);
+
+        // Create replacement content larger than 10MB
+        const largeContent = 'x'.repeat(11 * 1024 * 1024);
+
+        await expect(service.replaceRange(0, 12, largeContent))
+          .rejects.toThrow('Content too large (exceeds 10MB limit)');
+
+        expect(eventListener).toHaveBeenCalledWith({
+          type: 'error',
+          error: expect.stringContaining('Content too large')
+        });
+      });
+    });
+  });
+
   describe('Utility Methods', () => {
     it('should return correct dirty state', async () => {
       expect(service.isDirty()).toBe(false);

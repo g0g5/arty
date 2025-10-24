@@ -125,6 +125,11 @@ export interface IDocumentService {
   replaceContent(target: string, replacement: string): Promise<void>;
   searchContent(pattern: string): MatchResult[];
   
+  // Position-aware content operations
+  insertAt(position: number, content: string): Promise<void>;
+  deleteRange(start: number, end: number): Promise<void>;
+  replaceRange(start: number, end: number, replacement: string): Promise<void>;
+  
   // File operations
   saveDocument(): Promise<void>;
   revertToSnapshot(snapshotId: string): Promise<void>;

@@ -4,9 +4,14 @@
  * Refactored to use DocumentService for all document operations
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { documentService } from '../../shared/services';
 import type { DocumentEvent } from '../../shared/services';
+
+interface CursorState {
+  start: number;
+  end: number;
+}
 
 interface TextEditorPanelProps {
   fileHandle: FileSystemFileHandle | null;
@@ -20,6 +25,8 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [cursorPosition, setCursorPosition] = useState<CursorState>({ start: 0, end: 0 });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Subscribe to DocumentService events
   useEffect(() => {
@@ -106,27 +113,137 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
     }
   }, [isDirty]);
 
+  // Capture cursor position before content changes
+  const handleBeforeInput = useCallback(() => {
+    if (textareaRef.current) {
+      setCursorPosition({
+        start: textareaRef.current.selectionStart,
+        end: textareaRef.current.selectionEnd
+      });
+    }
+  }, []);
+
   // Handle content changes - update DocumentService
   const handleContentChange = useCallback(async (newContent: string) => {
     try {
       // Get current content from DocumentService
       const currentContent = documentService.getContent();
+      const { start, end } = cursorPosition;
       
-      // Calculate the difference and update accordingly
+      // Validate cursor position before proceeding
+      if (start < 0 || end < 0 || start > currentContent.length || end > currentContent.length) {
+        console.error('Invalid cursor position:', { start, end, contentLength: currentContent.length });
+        // Fallback to local state update
+        setContent(newContent);
+        setError('Cursor position error - content updated locally');
+        return;
+      }
+      
+      // Determine the type of change based on content length and cursor position
       if (newContent.length > currentContent.length) {
-        // Content was added
-        const addedContent = newContent.slice(currentContent.length);
-        await documentService.appendContent(addedContent);
+        // Content was inserted
+        const lengthDiff = newContent.length - currentContent.length;
+        const insertedContent = newContent.slice(start, start + lengthDiff);
+        
+        try {
+          await documentService.insertAt(start, insertedContent);
+          
+          // Update cursor position for restoration (after inserted content)
+          setCursorPosition({ 
+            start: start + lengthDiff, 
+            end: start + lengthDiff 
+          });
+        } catch (err) {
+          console.error('Error inserting content at position:', { start, insertedContent, error: err });
+          // Fallback to local state update
+          setContent(newContent);
+          const errorMessage = err instanceof Error ? err.message : 'Failed to insert content';
+          setError(errorMessage);
+        }
+      } else if (newContent.length < currentContent.length) {
+        // Content was deleted
+        const lengthDiff = currentContent.length - newContent.length;
+        
+        try {
+          // If there was a selection, delete the selected range
+          if (start !== end) {
+            await documentService.deleteRange(start, end);
+            // Update cursor position for restoration (at deletion point)
+            setCursorPosition({ start, end: start });
+          } else {
+            // Single character deletion (backspace or delete key)
+            // Backspace deletes before cursor, delete key deletes after cursor
+            // We need to determine which by checking if content before cursor changed
+            const contentBefore = currentContent.slice(0, start);
+            const newContentBefore = newContent.slice(0, start);
+            
+            if (contentBefore !== newContentBefore) {
+              // Backspace: content before cursor changed
+              await documentService.deleteRange(start - lengthDiff, start);
+              setCursorPosition({ start: start - lengthDiff, end: start - lengthDiff });
+            } else {
+              // Delete key: content after cursor changed
+              await documentService.deleteRange(start, start + lengthDiff);
+              setCursorPosition({ start, end: start });
+            }
+          }
+        } catch (err) {
+          console.error('Error deleting content range:', { start, end, lengthDiff, error: err });
+          // Fallback to local state update
+          setContent(newContent);
+          const errorMessage = err instanceof Error ? err.message : 'Failed to delete content';
+          setError(errorMessage);
+        }
+      } else if (start !== end) {
+        // Selection was replaced with content of same length
+        const replacementContent = newContent.slice(start, end);
+        
+        try {
+          await documentService.replaceRange(start, end, replacementContent);
+          
+          // Update cursor position for restoration (after replacement content)
+          setCursorPosition({ 
+            start: start + replacementContent.length, 
+            end: start + replacementContent.length 
+          });
+        } catch (err) {
+          console.error('Error replacing content range:', { start, end, replacementContent, error: err });
+          // Fallback to local state update
+          setContent(newContent);
+          const errorMessage = err instanceof Error ? err.message : 'Failed to replace content';
+          setError(errorMessage);
+        }
       } else {
-        // Content was modified or removed - use replace
-        await documentService.replaceContent(currentContent, newContent);
+        // Content length is the same and no selection - might be a character replacement
+        // Find the position where content differs
+        let diffStart = 0;
+        while (diffStart < currentContent.length && currentContent[diffStart] === newContent[diffStart]) {
+          diffStart++;
+        }
+        
+        if (diffStart < currentContent.length) {
+          try {
+            // Found a difference - replace single character
+            await documentService.replaceRange(diffStart, diffStart + 1, newContent[diffStart]);
+            setCursorPosition({ start: diffStart + 1, end: diffStart + 1 });
+          } catch (err) {
+            console.error('Error replacing character:', { diffStart, character: newContent[diffStart], error: err });
+            // Fallback to local state update
+            setContent(newContent);
+            const errorMessage = err instanceof Error ? err.message : 'Failed to replace character';
+            setError(errorMessage);
+          }
+        }
       }
     } catch (err) {
-      // If no document is loaded, just update local state
+      // Catch-all for any unexpected errors during content change calculation
+      console.error('Unexpected error in handleContentChange:', err);
+      // Fallback to local state update to ensure user can continue editing
       setContent(newContent);
-      console.error('Error updating content:', err);
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      setError(errorMessage);
     }
-  }, []);
+  }, [cursorPosition]);
 
   // Keyboard shortcut for save (Ctrl+S / Cmd+S)
   useEffect(() => {
@@ -156,6 +273,14 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isDirty, saveFile]);
+
+  // Restore cursor position after content updates
+  useEffect(() => {
+    if (textareaRef.current) {
+      // Restore the cursor position to maintain editing flow
+      textareaRef.current.setSelectionRange(cursorPosition.start, cursorPosition.end);
+    }
+  }, [content, cursorPosition]);
 
 
 
@@ -259,8 +384,10 @@ export function TextEditorPanel({ fileHandle, filePath }: TextEditorPanelProps) 
 
         {/* Plain Text Editor */}
         <textarea
+          ref={textareaRef}
           value={content}
           onChange={(e) => handleContentChange(e.target.value)}
+          onBeforeInput={handleBeforeInput}
           className="flex-1 w-full p-4 font-mono text-sm resize-none focus:outline-none bg-white"
           placeholder="Start typing your content..."
           spellCheck={false}
